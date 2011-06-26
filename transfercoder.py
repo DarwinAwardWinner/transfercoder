@@ -315,7 +315,7 @@ def main(source_directory, destination_directory,
                 action = "Transcoding"
             print "%s: %s -> %s" % (action, tfc.src, tfc.dest)
             if not dry_run:
-                tfc.transfer(pacpl=pacpl, rsync=rsync)
+                tfc.transfer(pacpl=pacpl_path, rsync=rsync_path)
         else:
             print "Skipping: %s -> %s" % (tfc.src, tfc.dest)
     print "Done"
