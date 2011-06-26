@@ -63,3 +63,9 @@ transfer.
   relative or absolute paths, and the device may expect them in odd
   formats. You'll need to come up with your own solution here, or just
   use a media player that handles them.
+* Replaygain tags are not copied. This is because in my experience,
+  different formats of the same song need different adjustments, even
+  though in theory they should have identical volumes. So replaygain
+  your library on your device after syncing. If only there was a
+  [tool](https://github.com/DarwinAwardWinner/rganalysis) for that
+  too.
