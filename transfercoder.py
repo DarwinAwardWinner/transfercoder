@@ -46,7 +46,7 @@ def filter_hidden(paths):
 def splitext_afterdot(path):
     """Same as os.path.splitext, but the dot goes to the base."""
     base, ext = os.path.splitext(path)
-    if ext[0] == ".":
+    if len(ext) > 0 and ext[0] == ".":
         base += "."
         ext = ext[1:]
     return (base, ext)
