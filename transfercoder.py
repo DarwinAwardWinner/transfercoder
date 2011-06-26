@@ -41,12 +41,12 @@ def test_executable(exe, options=("--help",)):
     return retval == 0
 
 def filter_hidden(paths):
-    return filter(lambda x: x[0] == ".", paths)
+    return filter(lambda x: x[0] != ".", paths)
 
 def splitext_afterdot(path):
     """Same as os.path.splitext, but the dot goes to the base."""
     base, ext = os.path.splitext(path)
-    if ext[0] = ".":
+    if ext[0] == ".":
         base += "."
         ext = ext[1:]
     return (base, ext)
@@ -133,16 +133,19 @@ class Transfercode(object):
         is older than the source file."""
         if not os.path.exists(self.dest):
             return True
-        src_mtime = os.path.getmtime(self.src
-        dest_mtime = os.path.getmtime(self.dest
+        src_mtime = os.path.getmtime(self.src)
+        dest_mtime = os.path.getmtime(self.dest)
         return src_mtime > dest_mtime
 
     def needs_transcode(self):
         return self.src_ext != self.dest_ext
 
     def transcode(self, pacpl="pacpl"):
-        command = [pacpl, "--overwrite", "--keep", "--to", self.dest_ext, "--outfile", self.dest, self.src]
-        call(command)
+        # pacpl expects a relative path with no extension, apparently
+        rel_dest = os.path.relpath(self.dest, self.src_dir)
+        rel_dest_base = os.path.splitext(rel_dest)[0]
+        command = [pacpl, "--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
+        call_silent(command)
         copy_tags(self.src, self.dest)
 
     def copy(self, rsync=None):
@@ -153,14 +156,14 @@ class Transfercode(object):
         success = False
         if rsync:
             try:
-                retval = call([ rsync, "-q", "-p", self.src(), self.dest() ]) == 0
+                retval = call_silent([ rsync, "-q", "-p", self.src, self.dest ]) == 0
                 success = (retval == 0)
             except:
                 success = False
         if not success:
             # Try regular copy instead if rsync failed
-            shutil.copyfile(self.src(), self.dest())
-            shutil.copymode(self.src(), self.dest())
+            shutil.copyfile(self.src, self.dest)
+            shutil.copymode(self.src, self.dest)
 
     def check(self):
         """Checks that source file and dest dir exist.
@@ -228,7 +231,7 @@ class DestinationFinder(object):
                 files = filter_hidden(files)
             for f in files:
                 src = os.path.join(root, f)
-                dest = self.find_dest(src_path)
+                dest = self.find_dest(src)
                 yield Transfercode(src, dest)
 
 def create_dirs(dirs):
@@ -256,24 +259,30 @@ def directory(x):
     else:
         return path
 
+def potential_directory(x):
+    if os.path.exists(x):
+        return directory(x)
+    else:
+        return x
+
 # Entry point
 def plac_call_main():
     return plac.call(main)
 
 @plac.annotations(
     # arg=(helptext, kind, abbrev, type, choices, metavar)
-    source_directory=("The directory with all your music in it.", "positional", directory),
-    destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", directory),
-    transcode_formats=("A comma-separated list of file extensions that must be transcoded.", "option", comma_delimited_set),
-    target_format=("All transcode formats will be transcoded to this format.", "option", str),
-    pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH.", "option", str),
-    rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", str),
-    dry_run=("Don't actually modify anything.", "flag"),
-    include_hidden=("Don't skip directories and files starting with a dot.", "flag"),
-    force=("Update destination files even if they are newer.", "flag"),
+    source_directory=("The directory with all your music in it.", "positional", None, directory),
+    destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", None, potential_directory),
+    transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set),
+    target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
+    pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH.", "option", "p", str),
+    rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
+    dry_run=("Don't actually modify anything.", "flag", "m"),
+    include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
+    force=("Update destination files even if they are newer.", "flag", "f"),
     )
 def main(source_directory, destination_directory,
-         transcode_formats=set("flac", "wv", "wav", "ape", "fla"),
+         transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
          pacpl_path=None, rsync_path=None,
          dry_run=False, include_hidden=False, force=False):
@@ -298,18 +307,22 @@ def main(source_directory, destination_directory,
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format)
     transfercodes = list(df.transfercodes(hidden=include_hidden))
-    if not force:
-        transfercodes = filter(lambda x: x.needs_update(), transfercodes)
     if not dry_run:
         create_dirs(set(x.dest_dir for x in transfercodes))
     for tfc in transfercodes:
-        print "%s -> %s" % (tfc.src, tfc.dest)
-        if not dry_run:
-            tfc.transfer()
+        if tfc.needs_update() or force:
+            if tfc.src_ext == tfc.dest_ext:
+                action = "Transferring"
+            else:
+                action = "Transcoding"
+            print "%s: %s -> %s" % (action, tfc.src, tfc.dest)
+            if not dry_run:
+                tfc.transfer(pacpl=pacpl, rsync=rsync)
+        else:
+            print "Skipping: %s -> %s" % (tfc.src, tfc.dest)
     print "Done"
     if dry_run:
         print "Ran in --dry_run mode. Nothing actually happened."
-
 
 if __name__ == "__main__":
     plac_call_main()
