@@ -397,6 +397,7 @@ def main(source_directory, destination_directory,
         assert not dry_run, "Parallel dry run makes no sense"
         work_dir = None
         transcode_pool = None
+        last_file = None
         try:
             if not force:
                 for tfc in ifilter(lambda x: not x.needs_update(), transfercodes):
@@ -410,7 +411,9 @@ def main(source_directory, destination_directory,
                 transcode_pool = multiprocessing.Pool(jobs)
                 transcoded = transcode_pool.imap_unordered(f, transfercodes)
                 for tfc in transcoded:
+                    last_file = tfc.dest
                     tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, report=True)
+                last_file = None
         except KeyboardInterrupt:
             if transcode_pool is not None:
                 transcode_pool.terminate()
@@ -420,6 +423,9 @@ def main(source_directory, destination_directory,
                 transcode_pool.close()
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
+            if last_file is not None:
+                print "Cleaning incomplete transfer: %s" % last_file
+                os.remove(last_file)
     print "Done."
     if dry_run:
         print "Ran in --dry_run mode. Nothing actually happened."
