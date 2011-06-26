@@ -284,7 +284,7 @@ def plac_call_main():
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
-         pacpl_path=None, rsync_path=None,
+         pacpl_path="pacpl", rsync_path="rsync",
          dry_run=False, include_hidden=False, force=False):
     """Mirror a directory with transcoding.
 
@@ -300,8 +300,6 @@ def main(source_directory, destination_directory,
 
     if target_format in transcode_formats:
         argument_error('The target format must not be one of the transcode formats')
-    pacpl = pacpl_path or "pacpl"
-    rsync = rsync_path or "rsync"
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
