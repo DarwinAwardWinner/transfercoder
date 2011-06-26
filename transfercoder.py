@@ -358,7 +358,7 @@ def plac_call_main():
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
     force=("Update destination files even if they are newer.", "flag", "f"),
     temp_dir=("Temporary directory to use for transcoded files.", "option", "t", directory),
-    jobs=("Number of transcoding jobs to run in parallel. Transfers will always run sequentially. The default is the number of cores available on the system.", "option", "j", positive_int),
+    jobs=("Number of transcoding jobs to run in parallel. Transfers will always run sequentially. The default is the number of cores available on the system. Use -j1 to force full sequential operation.", "option", "j", positive_int),
     )
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
