@@ -273,7 +273,7 @@ def plac_call_main():
     # arg=(helptext, kind, abbrev, type, choices, metavar)
     source_directory=("The directory with all your music in it.", "positional", None, directory),
     destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", None, potential_directory),
-    transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set),
+    transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
     target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
     pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH.", "option", "p", str),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
