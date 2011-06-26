@@ -15,8 +15,10 @@ require transcoding and the format to transcode to. All your music is
 copied to the device, preserving the directory structure. Any files
 with the specified extensions are transcoded, keeping the same base
 name and changing the extension. All other files are copied with no
-modification. Running the same script a second time will only update
-files that are newer in your music directory.
+modification. This includes *all* other files, not just other music
+files. So your album art and stuff gets transferred too. Running the
+same script a second time will only update files that are newer in
+your music directory.
 
 The default transcoding options will transcode several lossless
 formats to ogg.
