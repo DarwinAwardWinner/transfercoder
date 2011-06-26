@@ -16,16 +16,19 @@ copied to the device, preserving the directory structure. Any files
 with the specified extensions are transcoded, keeping the same base
 name and changing the extension. All other files are copied with no
 modification. This includes *all* other files, not just other music
-files. So your album art and stuff gets transferred too. Running the
+files. So your album art and stuff gets transferred too. Transcoding
+happens in parallel if you have multiple cores avilable. Running the
 same script a second time will only update files that are newer in
-your music directory.
+your music directory. The default transcoding options will transcode
+several lossless formats to ogg.
 
-The default transcoding options will transcode several lossless
-formats to ogg.
+# Usage
 
-PAC is in charge of transcoding, so to adjust quality settings you
-must edit PAC's configuration.
+Put the script in your path. Install the prereqs. Then, use as so:
 
+    $ transfercoder /home/yourname/Music /media/musicplayer/music
+
+See the help for more options. Or ask me.
 
 # Prerequisites
 
@@ -56,14 +59,6 @@ transfer.
 * You can only choose one target transcoding target format. I can't
   see a reason you would want more than one. You wouldn't want to
   transcode flac to ogg and then transcode wavpack to mp3.
-* No parallel operation. I considered adding this, but transfers are
-  disk-bound, and transcodes are cpu-bound, so it's not clear that
-  there would be any advantage, not is it clear how to parrallelize
-  things. It might just cause more fragmentation and seeking. One
-  solution would be to transcode to temporary files in parallel and
-  then put those temp files on the transfer queue along with the ones
-  that don't need transcoding. But this adds a good deal of
-  complexity.
 * No playlist support. Playlists can get complicated. They may have
   relative or absolute paths, and the device may expect them in odd
   formats. You'll need to come up with your own solution here, or just
