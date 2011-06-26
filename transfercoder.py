@@ -232,7 +232,7 @@ class Transfercode(object):
             temp_basename, temp_ext = os.path.splitext(tempname)
             temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
             Transfercode(self.src, temp_filename).transfer(force=True, *args, **kwargs)
-            return Transfercode(temp_filename, self.dest)
+            return TransfercodeTemp(temp_filename, self.dest)
         else:
             return self
 
