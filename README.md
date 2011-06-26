@@ -20,6 +20,14 @@ cores avilable. Running the same script a second time will only update
 files that are newer in your music directory. The default transcoding
 options will transcode several lossless formats to ogg.
 
+# Usage
+
+Put the script in your path. Install the prereqs. Then, use as so:
+
+    $ transfercoder /home/yourname/Music /media/musicplayer/music
+
+See the help for more options. Or ask me.
+
 # Prerequisites
 
 * Python with plac module
