@@ -23,6 +23,17 @@ from quodlibet.formats import MusicFile
 import tempfile
 import multiprocessing
 
+# Fix keyboard interrupts when using multiprocessing.pool.imap().
+# https://gist.github.com/626518
+from multiprocessing.pool import IMapIterator
+def wrapper(func):
+  def wrap(self, timeout=None):
+    # Note: the timeout of 1 googol seconds introduces a rather subtle
+    # bug for Python scripts intended to run many times the age of the universe.
+    return func(self, timeout=timeout if timeout is not None else 1e100)
+  return wrap
+IMapIterator.next = wrapper(IMapIterator.next)
+
 def default_job_count():
     try:
         return multiprocessing.cpu_count()
