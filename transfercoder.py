@@ -171,7 +171,8 @@ class Transfercode(object):
         rel_dest = os.path.relpath(self.dest, self.src_dir)
         rel_dest_base = os.path.splitext(rel_dest)[0]
         command = [pacpl, "--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
-        call_silent(command)
+        if call_silent(command) != 0:
+            raise Exception("External command failed")
         copy_tags(self.src, self.dest)
         shutil.copymode(self.src, self.dest)
 
