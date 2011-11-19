@@ -182,6 +182,8 @@ class Transfercode(object):
         Optional arg rsync allows rsync to be used, which may be more
         efficient."""
         success = False
+        if rsync is True:
+            rsync = "rsync"
         if rsync:
             try:
                 retval = call_silent([ rsync, "-q", "-p", self.src, self.dest ]) == 0
