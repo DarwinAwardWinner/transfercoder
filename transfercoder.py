@@ -23,17 +23,7 @@ from quodlibet.formats import MusicFile
 import tempfile
 import multiprocessing
 import logging
-
-# Fix keyboard interrupts when using multiprocessing.pool.imap().
-# https://gist.github.com/626518
-from multiprocessing.pool import IMapIterator
-def wrapper(func):
-  def wrap(self, timeout=None):
-    # Note: the timeout of 1 googol seconds introduces a rather subtle
-    # bug for Python scripts intended to run many times the age of the universe.
-    return func(self, timeout=timeout if timeout is not None else 1e100)
-  return wrap
-IMapIterator.next = wrapper(IMapIterator.next)
+from multiprocessing.pool import ThreadPool
 
 def default_job_count():
     try:
@@ -491,7 +481,7 @@ def main(source_directory, destination_directory,
                 work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
                 f = TempdirTranscoder(tempdir=work_dir, pacpl=pacpl_path, rsync=rsync_path,
                                       force=force)
-                transcode_pool = multiprocessing.Pool(jobs)
+                transcode_pool = ThreadPool(jobs)
                 # Sort jobs that don't need transcoding first
                 transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
                 transcoded = transcode_pool.imap_unordered(f, transfercodes)
