@@ -502,10 +502,10 @@ def main(source_directory, destination_directory,
             if transcode_pool is not None:
                 logging.debug("Closing transcode process pool")
                 transcode_pool.close()
-            if work_dir is not None:
+            if work_dir and os.path.exists(work_dir):
                 logging.debug("Deleting temporary directory")
                 shutil.rmtree(work_dir, ignore_errors=True)
-            if last_file is not None:
+            if last_file and os.path.exists(last_file):
                 logging.info("Cleaning incomplete transfer: %s", last_file)
                 os.remove(last_file)
     if delete:
