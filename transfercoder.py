@@ -239,7 +239,7 @@ class Transfercode(object):
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
         else:
-            logging.info("Skipping: %s -> %s", self.src, self.dest)
+            logging.debug("Skipping: %s -> %s", self.src, self.dest)
 
     def transcode_to_tempdir(self, tempdir=None, force=False, dry_run=False, *args, **kwargs):
         """Transcode a file to a tempdir.
