@@ -494,10 +494,11 @@ def main(source_directory, destination_directory,
                 tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force)
             last_file = None
         except KeyboardInterrupt:
+            logging.error("Canceled.")
             if transcode_pool is not None:
                 logging.debug("Terminating transcode process pool")
                 transcode_pool.terminate()
-            logging.error("\nCanceled.")
+                transcode_pool = None
         finally:
             if transcode_pool is not None:
                 logging.debug("Closing transcode process pool")
