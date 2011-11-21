@@ -306,12 +306,13 @@ def walk_files(dir, hidden=False):
 
 class DestinationFinder(object):
     """A class for converting source paths to destination paths."""
-    def __init__(self, src_dir, dest_dir, src_exts, dest_ext):
+    def __init__(self, src_dir, dest_dir, src_exts, dest_ext, hidden=False):
         self.src_dir = os.path.realpath(src_dir)
         self.dest_dir = os.path.realpath(dest_dir)
         # These need leading dots
         self.src_exts = src_exts
         self.dest_ext = dest_ext
+        self.include_hidden = hidden
 
     def find_dest(self, src):
         """Returns the absolute destination path for a source path.
@@ -331,11 +332,34 @@ class DestinationFinder(object):
             dest_relpath = src
         return os.path.join(self.dest_dir, dest_relpath)
 
-    def transfercodes(self, hidden=False):
+    def walk_source_files(self):
+        """An iterator over all files in the source directory."""
+        return walk_files(self.src_dir, hidden=self.include_hidden)
+
+    def walk_target_files(self):
+        """An iterator over all files that are to be created in the destination directory."""
+        return imap(self.find_dest, self.walk_source_files())
+
+    def walk_source_target_pairs(self):
+        """iter(zip(self.walk_source_files(), self.walk_target_files()))'.
+
+        Only it's more efficient."""
+        return ((src, self.find_dest(src)) for src in self.walk_source_files())
+
+    def walk_existing_dest_files(self):
+        """An iterator over all existing files in the destination directory."""
+        return walk_files(self.dest_dir, hidden=self.include_hidden)
+
+    def walk_extra_dest_files(self):
+        """An iterator over all existing files in the destination directory that are not targets of source files.
+
+        These are the files that transfercoder would delete if given the --delete option."""
+        target_files = list(self.walk_target_files())
+        return sorted(set(self.walk_existing_dest_files()).difference(self.walk_target_files()))
+
+    def transfercodes(self):
         """Generate Transfercode objects for all src files."""
-        for src in walk_files(self.src_dir, hidden):
-            dest = self.find_dest(src)
-            yield Transfercode(src, dest)
+        return (Transfercode(src,dest) for src, dest in self.walk_source_target_pairs())
 
 def create_dirs(dirs):
     """Ensure that a list of directories all exist"""
@@ -437,8 +461,8 @@ def main(source_directory, destination_directory,
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
-                           transcode_formats, target_format)
-    transfercodes = list(df.transfercodes(hidden=include_hidden))
+                           transcode_formats, target_format, include_hidden)
+    transfercodes = list(df.transfercodes())
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
     # Only transcoding happens in parallel
     if jobs > 0 and not need_at_least_one_transcode:
@@ -494,10 +518,7 @@ def main(source_directory, destination_directory,
                 logging.info("Cleaning incomplete transfer: %s", last_file)
                 os.remove(last_file)
     if delete:
-        existing_destination_files = set(imap(os.path.realpath, walk_files(destination_directory, hidden=include_hidden)))
-        target_files = imap(os.path.realpath, (x.dest for x in transfercodes))
-        files_to_delete=sorted(existing_destination_files.difference(target_files))
-        for f in files_to_delete:
+        for f in df.walk_extra_dest_files():
             logging.info("Deleting: %s", f)
             if not dry_run:
                 os.remove(f)
