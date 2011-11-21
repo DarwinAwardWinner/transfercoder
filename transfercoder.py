@@ -493,6 +493,8 @@ def main(source_directory, destination_directory,
                 f = TempdirTranscoder(tempdir=work_dir, pacpl=pacpl_path, rsync=rsync_path,
                                       force=force)
                 transcode_pool = multiprocessing.Pool(jobs)
+                # Sort jobs that don't need transcoding first
+                transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
                 transcoded = transcode_pool.imap_unordered(f, transfercodes)
             else:
                 # Skip the transcoding step if nothing needs transcoding
