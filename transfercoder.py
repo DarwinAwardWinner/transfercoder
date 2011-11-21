@@ -414,8 +414,9 @@ def main(source_directory, destination_directory,
     transcoded into the target format use Perl Audio Converter. All other
     files are copied over unchanged.
 
-    By default, lossless audio formats are transcoded to ogg, and all
-    other formats are copied unmodified. """
+    The default behavior is to transcode several lossless formats
+    (flac, wavpack, wav, and ape) to ogg, and all other files are
+    copied over unmodified."""
     if quiet:
         logging.basicConfig(level=logging.WARN)
     elif verbose:
