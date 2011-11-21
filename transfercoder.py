@@ -41,7 +41,6 @@ def default_job_count():
     except:
         return 1
 
-
 def call_silent(cmd, *args, **kwargs):
     """Like subprocess.call, but redirects stdin/out/err to null device."""
     nullsrc = open(os.devnull, "r")
