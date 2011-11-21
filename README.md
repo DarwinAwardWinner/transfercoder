@@ -69,3 +69,8 @@ transfer.
   your library on your device after syncing. If only there was a
   [tool](https://github.com/DarwinAwardWinner/rganalysis) for that
   too.
+
+# Why
+
+This written both as a useful tool for myself, as well as a way for me
+to write a basic parallel python program.
