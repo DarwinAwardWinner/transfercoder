@@ -424,14 +424,14 @@ def main(source_directory, destination_directory,
     else:
         logging.basicConfig(level=logging.INFO)
 
+    if target_format in transcode_formats:
+        argument_error('The target format must not be one of the transcode formats')
 
     if dry_run:
         logging.info("Running in --dry_run mode. Nothing actually happens.")
         # No point doing nothing in parallel
         jobs = 1
 
-    if target_format in transcode_formats:
-        argument_error('The target format must not be one of the transcode formats')
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
