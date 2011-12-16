@@ -170,7 +170,11 @@ class Transfercode(object):
         if not os.path.isfile(self.dest):
             raise Exception("Perl Audio Converter did not produce an output file")
         copy_tags(self.src, self.dest)
-        shutil.copymode(self.src, self.dest)
+        try:
+            shutil.copymode(self.src, self.dest)
+        except OSError:
+            # It's ok if setting the mode fails
+            pass
 
     def copy(self, rsync=None, dry_run=False):
         """Copy src to dest.
