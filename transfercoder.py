@@ -165,7 +165,7 @@ class Transfercode(object):
         # pacpl expects a relative path with no extension, apparently
         rel_dest = os.path.relpath(self.dest, self.src_dir)
         rel_dest_base = os.path.splitext(rel_dest)[0]
-        command = [pacpl] + (["--eopts", eopts] if eopts else []) + \
+        command = [pacpl] + (["--eopts", self.eopts] if self.eopts else []) + \
           ["--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
         if call_silent(command) != 0:
             raise Exception("Perl Audio Converter failed")
