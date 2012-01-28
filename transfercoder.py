@@ -129,19 +129,20 @@ carry across formats."""
     m_dest.write()
 
 class Transfercode(object):
-    def __init__(self, src, dest):
+    def __init__(self, src, dest, eopts=None):
         self.src = src
         self.dest = dest
         self.src_dir = os.path.split(self.src)[0]
         self.dest_dir = os.path.split(self.dest)[0]
         self.src_ext = splitext_afterdot(self.src)[1]
         self.dest_ext = splitext_afterdot(self.dest)[1]
+        self.eopts = eopts
 
     def __repr__(self):
-        return "Transfercode(" + repr(self.src) + ', ' + repr(self.dest) + ")"
+        return "%s(%s, %s, %s)" % (type(self).__name__, repr(self.src), repr(self.dest), repr(self.eopts))
 
     def __str__(self):
-        return self.__repr__()
+        return repr(self)
 
     def needs_update(self):
         """Returns true if dest file needs update.
@@ -164,7 +165,8 @@ class Transfercode(object):
         # pacpl expects a relative path with no extension, apparently
         rel_dest = os.path.relpath(self.dest, self.src_dir)
         rel_dest_base = os.path.splitext(rel_dest)[0]
-        command = [pacpl, "--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
+        command = [pacpl] + (["--eopts", eopts] if eopts else []) + \
+          ["--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
         if call_silent(command) != 0:
             raise Exception("Perl Audio Converter failed")
         if not os.path.isfile(self.dest):
@@ -254,7 +256,7 @@ class Transfercode(object):
         temp_basename, temp_ext = os.path.splitext(tempname)
         temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
         Transfercode(self.src, temp_filename).transfer(force=True, *args, **kwargs)
-        return TransfercodeTemp(temp_filename, self.dest)
+        return TransfercodeTemp(temp_filename, self.dest, self.eopts)
 
 class TransfercodeTemp(Transfercode):
     """Transfercode subclass where source is a temp file.
@@ -268,9 +270,6 @@ The only addition is that the source file is deleted after transfer."""
         """This would be redundant."""
         return self
 
-    def __repr__(self):
-        return "TransfercodeTemp(" + repr(self.src) + ', ' + repr(self.dest) + ")"
-
 def is_subpath(path, parent):
     """Returns true if path is a subpath of parent.
 
@@ -280,7 +279,7 @@ def is_subpath(path, parent):
 
     Any path is a subpath of itself."""
     # Any relative path that doesn't start with ".." is a subpath.
-    return os.path.relpath(path, parent)[0:2] != os.path.pardir
+    return not os.path.relpath(path, parent)[0:2].startswith(os.path.pardir)
 
 def walk_files(dir, hidden=False):
     """Iterator over paths to non-directory files in dir.
@@ -350,8 +349,10 @@ class DestinationFinder(object):
         target_files = list(self.walk_target_files())
         return sorted(set(self.walk_existing_dest_files()).difference(self.walk_target_files()))
 
-    def transfercodes(self):
-        """Generate Transfercode objects for all src files."""
+    def transfercodes(self, eopts=None):
+        """Generate Transfercode objects for all src files.
+
+        Optional arg 'eopts' is passed to the Transfercode() constructor."""
         return (Transfercode(src,dest) for src, dest in self.walk_source_target_pairs())
 
 def create_dirs(dirs):
@@ -407,6 +408,7 @@ def plac_call_main():
     transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
     target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
     pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
+    extra_encoder_options=("Extra options to pass to the encoder. This is passed to pacpl using the '--eopts' option. If you think you need to use this, you should probably just edit pacpl's config file instead.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
     dry_run=("Don't actually modify anything.", "flag", "m"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
@@ -420,7 +422,8 @@ def plac_call_main():
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
-         pacpl_path="pacpl", rsync_path="rsync",
+         pacpl_path="pacpl", extra_encoder_options="",
+         rsync_path="rsync",
          dry_run=False, include_hidden=False, delete=False, force=False,
          quiet=False, verbose=False,
          temp_dir=tempfile.gettempdir(), jobs=default_job_count()):
@@ -455,7 +458,7 @@ def main(source_directory, destination_directory,
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
-    transfercodes = list(df.transfercodes())
+    transfercodes = list(df.transfercodes(eopts=extra_encoder_options))
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
     # Only transcoding happens in parallel
     if jobs > 0 and not need_at_least_one_transcode:
