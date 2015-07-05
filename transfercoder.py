@@ -31,7 +31,7 @@ from multiprocessing.pool import ThreadPool
 def default_job_count():
     try:
         return multiprocessing.cpu_count()
-    except:
+    except Exception:
         return 1
 
 def call_silent(cmd, *args, **kwargs):
@@ -50,7 +50,7 @@ def test_executable(exe, options=("--help",)):
     cmd = (exe, ) + options
     try:
         retval = call_silent(cmd)
-    except:
+    except Exception:
         return False
     return retval == 0
 
@@ -196,7 +196,7 @@ class Transfercode(object):
             try:
                 retval = call_silent([ rsync, "-q", "-p", self.src, self.dest ]) == 0
                 success = (retval == 0)
-            except:
+            except Exception:
                 success = False
         if not success:
             # Try regular copy instead if rsync failed
