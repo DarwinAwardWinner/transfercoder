@@ -18,7 +18,10 @@ import os, sys, re, UserDict
 from warnings import warn
 from itertools import *
 import quodlibet.config
-quodlibet.config.init()
+try:
+    quodlibet.config.init()
+except ValueError:
+    pass
 from quodlibet.formats import MusicFile
 import tempfile
 import multiprocessing
