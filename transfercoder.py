@@ -54,8 +54,16 @@ def test_executable(exe, options=("--help",)):
         return False
     return retval == 0
 
-def filter_hidden(paths):
-    return filter(lambda x: x[0] != ".", paths)
+def del_hidden(paths):
+    """Remove hidden paths from list of paths
+
+This modifies its argument *in place*, so it can be used with
+os.walk."""
+
+    hidden = (i for i in reversed(xrange(len(paths)))
+              if paths[i][0] == ".")
+    for i in hidden:
+        del paths[i]
 
 def splitext_afterdot(path):
     """Same as os.path.splitext, but the dot goes to the base."""
@@ -294,8 +302,8 @@ def walk_files(dir, hidden=False):
     directories."""
     for root, dirs, files in os.walk(dir):
         if not hidden:
-            dirs = filter_hidden(dirs)
-            files = filter_hidden(files)
+            del_hidden(dirs)
+            del_hidden(files)
         for f in files:
             yield os.path.join(root, f)
 
