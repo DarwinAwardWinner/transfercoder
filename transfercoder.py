@@ -10,7 +10,7 @@ except ImportError, e:
 
 import os
 import os.path
-from subprocess import call
+from subprocess import call, check_output
 import shutil
 from warnings import warn
 
@@ -86,8 +86,10 @@ class AudioFile(UserDict.DictMixin):
 
     Or grab the actual underlying quodlibet format object from the
     .data field and get your hands dirty."""
-    def __init__(self, filename, blacklist=()):
+    def __init__(self, filename, blacklist=[]):
         self.data = MusicFile(filename)
+        if self.data is None:
+            raise ValueError("Unable to identify %s as a music file" % (repr(filename)))
         # Also exclude mutagen's internal tags
         self.blacklist = [ re.compile("^~") ] + blacklist
     def __getitem__(self, item):
@@ -170,15 +172,20 @@ class Transfercode(object):
         return self.src_ext != self.dest_ext
 
     def transcode(self, pacpl="pacpl", dry_run=False):
-        logging.info("Transcoding: %s -> %s", self.src, self.dest)
+        logging.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
         if dry_run:
             return
+        # Throw an error early if we can't read tags from the source
+        # file
+        AudioFile(self.src)
         # pacpl expects a relative path with no extension, apparently
         rel_dest = os.path.relpath(self.dest, self.src_dir)
         rel_dest_base = os.path.splitext(rel_dest)[0]
         command = [pacpl] + (["--eopts", self.eopts] if self.eopts else []) + \
           ["--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
-        if call_silent(command) != 0:
+        pacpl_output = check_output(command, stderr=open(os.devnull, "w"))
+        # logging.debug("pacpl output:\n" + pacpl_output)
+        if not pacpl_output.find("Total files converted: 1, failed: 0"):
             raise Exception("Perl Audio Converter failed")
         if not os.path.isfile(self.dest):
             raise Exception("Perl Audio Converter did not produce an output file")
@@ -373,6 +380,16 @@ def create_dirs(dirs):
             logging.debug("Creating directory: %s", d)
             os.makedirs(d)
 
+class ParallelTranscodeException(Exception):
+    def __init__(self, message, exc, fname):
+
+        # Call the base class constructor with the parameters it needs
+        super(ParallelTranscodeException, self).__init__(message)
+
+        # Now for your custom code...
+        self.exc = exc
+        self.fname = fname
+
 class TempdirTranscoder(object):
     """A serializable wrapper for Transfercode.transcode_to_tempdir"""
     def __init__(self, tempdir, pacpl, rsync, force):
@@ -381,7 +398,10 @@ class TempdirTranscoder(object):
         self.rsync = rsync
         self.force = force
     def __call__(self, tfc):
-        return tfc.transcode_to_tempdir(tempdir=self.tempdir, pacpl=self.pacpl, rsync=self.rsync, force=self.force)
+        try:
+            return tfc.transcode_to_tempdir(tempdir=self.tempdir, pacpl=self.pacpl, rsync=self.rsync, force=self.force)
+        except Exception as exc:
+            return ParallelTranscodeException(str(exc), exc, tcf.src)
 
 # Plac types
 def comma_delimited_set(x):
@@ -478,15 +498,27 @@ def main(source_directory, destination_directory,
 
     if not dry_run:
         create_dirs(set(x.dest_dir for x in transfercodes))
-
+    failed_files = []
     if jobs == 0:
         logging.debug("Running in sequential mode.")
+        if need_at_least_one_transcode and not dry_run:
+            work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
         for tfc in transfercodes:
-            if need_at_least_one_transcode and not dry_run:
-                work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
+            try:
+                fname = tfc.src
                 tfc = tfc.transcode_to_tempdir(tempdir=work_dir, pacpl=pacpl_path,
                                                rsync=rsync_path, force=force, dry_run=dry_run)
-            tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, dry_run=dry_run)
+            except Exception as exc:
+                logging.exception("Exception while transcoding %s: %s", fname, exc)
+                failed_files.append(fname)
+                continue
+            try:
+                tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, dry_run=dry_run)
+            except Exception as exc:
+                logging.exception("Exception while transferring %s: %s", fname, exc)
+                failed_files.append(fname)
+                continue
+
     else:
         assert not dry_run, "Parallel dry run makes no sense"
         logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
@@ -508,8 +540,23 @@ def main(source_directory, destination_directory,
                 transcoded = transfercodes
             # Transfer step (not parallel, since it is disk-bound)
             for tfc in transcoded:
+                if isinstance(tfc, ParallelTranscodeException):
+                    pexc = tfc
+                    orig_exc = pexc.exc
+                    fname = pexc.fname
+                    try:
+                        raise orig_exc
+                    except Exception as exc:
+                        logging.exception("Exception while transcoding %s: %s", fname, exc)
+                        failed_files.append(fname)
+                        continue
                 last_file = tfc.dest
-                tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force)
+                try:
+                    tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, dry_run=dry_run)
+                except Exception as exc:
+                    logging.exception("Exception while transferring %s: %s", fname, exc)
+                    failed_files.append(fname)
+                    continue
             last_file = None
         except KeyboardInterrupt:
             logging.error("Canceled.")
@@ -532,8 +579,13 @@ def main(source_directory, destination_directory,
             logging.info("Deleting: %s", f)
             if not dry_run:
                 os.remove(f)
-
-    logging.info("Done.")
+    if failed_files:
+        logging.error("The following %s were not processed successfully:\n%s",
+                      len(failed_files),
+                      "\n".join("\t" + f for f in failed_files))
+        logging.info("Finished with some errors (see above).")
+    else:
+        logging.info("Finished with no errors.")
     if dry_run:
         logging.info("Ran in --dry_run mode. Nothing actually happened.")
 
