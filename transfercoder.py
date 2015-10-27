@@ -401,7 +401,7 @@ class TempdirTranscoder(object):
         try:
             return tfc.transcode_to_tempdir(tempdir=self.tempdir, pacpl=self.pacpl, rsync=self.rsync, force=self.force)
         except Exception as exc:
-            return ParallelTranscodeException(str(exc), exc, tcf.src)
+            return ParallelTranscodeException(str(exc), exc, tfc.src)
 
 # Plac types
 def comma_delimited_set(x):
@@ -580,7 +580,7 @@ def main(source_directory, destination_directory,
             if not dry_run:
                 os.remove(f)
     if failed_files:
-        logging.error("The following %s were not processed successfully:\n%s",
+        logging.error("The following %s files were not processed successfully:\n%s",
                       len(failed_files),
                       "\n".join("\t" + f for f in failed_files))
         logging.info("Finished with some errors (see above).")
