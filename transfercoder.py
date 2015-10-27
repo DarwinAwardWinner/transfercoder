@@ -560,6 +560,7 @@ def main(source_directory, destination_directory,
             last_file = None
         except KeyboardInterrupt:
             logging.error("Canceled.")
+            delete = False
             if transcode_pool is not None:
                 logging.debug("Terminating transcode process pool")
                 transcode_pool.terminate()
