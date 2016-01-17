@@ -496,13 +496,12 @@ def main(source_directory, destination_directory,
         logging.debug("Switching to sequential mode because no transcodes are required.")
         jobs = 0
 
+    work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
     if not dry_run:
         create_dirs(set(x.dest_dir for x in transfercodes))
     failed_files = []
     if jobs == 0:
         logging.debug("Running in sequential mode.")
-        if need_at_least_one_transcode and not dry_run:
-            work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
         for tfc in transfercodes:
             try:
                 fname = tfc.src
@@ -522,13 +521,11 @@ def main(source_directory, destination_directory,
     else:
         assert not dry_run, "Parallel dry run makes no sense"
         logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
-        work_dir = None
         transcode_pool = None
         last_file = None
         try:
             # Transcoding step (parallel)
             if need_at_least_one_transcode:
-                work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
                 f = TempdirTranscoder(tempdir=work_dir, pacpl=pacpl_path, rsync=rsync_path,
                                       force=force)
                 transcode_pool = ThreadPool(jobs)
