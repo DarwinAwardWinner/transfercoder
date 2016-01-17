@@ -441,7 +441,7 @@ def plac_call_main():
     pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
     extra_encoder_options=("Extra options to pass to the encoder. This is passed to pacpl using the '--eopts' option. If you think you need to use this, you should probably just edit pacpl's config file instead.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
-    dry_run=("Don't actually modify anything.", "flag", "m"),
+    dry_run=("Don't actually modify anything.", "flag", "n"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
     delete=("Delete files in the destination that do not have a corresponding file in the source directory.", "flag", "D"),
     force=("Update destination files even if they are newer.", "flag", "f"),
