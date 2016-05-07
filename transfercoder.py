@@ -328,6 +328,9 @@ class Transfercode(object):
                     self.transcode(ffmpeg=ffmpeg, dry_run=dry_run)
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
+        elif self.needs_transcode() and self.use_checksum and not self.saved_checksum():
+            logging.info("Saving checksum to destination file")
+            write_checksum_tag(self.dest, self.source_checksum())
         else:
             logging.debug("Skipping: %s -> %s", self.src, self.dest)
 
