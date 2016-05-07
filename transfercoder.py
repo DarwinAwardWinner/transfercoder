@@ -75,16 +75,21 @@ class AudioFile(UserDict.DictMixin):
     No internal mutagen tags are exposed, or filenames or anything. So
     calling clear() won't destroy the filename field or things like
     that. Use it like a dict, then .write() it to commit the changes.
+    When saving, tags that cannot be saved by the file format will be
+    skipped with a debug message, since this is a common occurrance
+    with MP3/M4A.
 
     Optional argument blacklist is a list of regexps matching
     non-transferrable tags. They will effectively be hidden, nether
     settable nor gettable.
 
-    Or grab the actual underlying quodlibet format object from the
-    .data field and get your hands dirty."""
-    def __init__(self, filename, blacklist=[]):
+    Or grab the actual underlying mutagen format object from the
+    .data field and get your hands dirty.
+
+    """
+    def __init__(self, filename, blacklist=[], easy=True):
         self.filename = filename
-        self.data = MusicFile(self.filename, easy=True)
+        self.data = MusicFile(self.filename, easy=easy)
         if self.data is None:
             raise ValueError("Unable to identify %s as a music file" % (repr(filename)))
         # Also exclude mutagen's internal tags
@@ -137,8 +142,8 @@ def copy_tags (src, dest):
 Excludes format-specific tags and replaygain info, which does not
 carry across formats."""
     try:
-        m_src = AudioFile(src, blacklist = blacklist_regexes)
-        m_dest = AudioFile(dest, blacklist = m_src.blacklist)
+        m_src = AudioFile(src, blacklist = blacklist_regexes, easy=True)
+        m_dest = AudioFile(dest, blacklist = m_src.blacklist, easy=True)
         m_dest.clear()
         m_dest.update(m_src)
         logging.debug("Added tags to dest file:\n%s",
@@ -148,7 +153,7 @@ carry across formats."""
         logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
 class Transfercode(object):
-    def __init__(self, src, dest, eopts=None):
+    def __init__(self, src, dest, eopts=None, use_checksum=True):
         self.src = src
         self.dest = dest
         self.src_dir = os.path.split(self.src)[0]
@@ -156,25 +161,32 @@ class Transfercode(object):
         self.src_ext = splitext_afterdot(self.src)[1]
         self.dest_ext = splitext_afterdot(self.dest)[1]
         self.eopts = eopts
+        self.use_checksum = use_checksum
 
     def __repr__(self):
-        return "%s(%s, %s, %s)" % (type(self).__name__, repr(self.src), repr(self.dest), repr(self.eopts))
+        return "%s(src=%s, dest=%s, epots=%s, use_checksum=%s)" % \
+            (type(self).__name__, repr(self.src), repr(self.dest),
+             repr(self.eopts), repr(self.use_checksum))
 
     def __str__(self):
         return repr(self)
 
     def needs_update(self):
-        """Returns true if dest file needs update.
+        """Returns True if dest file needs update.
 
         This is true when the dest file does not exist, or exists but
         is older than the source file."""
-        if not os.path.exists(self.dest):
-            return True
-        src_mtime = os.path.getmtime(self.src)
-        dest_mtime = os.path.getmtime(self.dest)
-        return src_mtime > dest_mtime
+        if self.use_checksum and self.needs_transcode():
+            raise Exception("Unimplemented")
+        else:
+            if not os.path.exists(self.dest):
+                return True
+            src_mtime = os.path.getmtime(self.src)
+            dest_mtime = os.path.getmtime(self.dest)
+            return src_mtime > dest_mtime
 
     def needs_transcode(self):
+        """Returns True if source and dest have different formats"""
         return self.src_ext != self.dest_ext
 
     def transcode(self, ffmpeg="ffmpeg", dry_run=False):
@@ -182,8 +194,9 @@ class Transfercode(object):
         logging.debug("Transcoding: %s", repr(self))
         if dry_run:
             return
-        # Throw an error early if we can't read tags from the source
-        # file
+        # This has no effect if successful, but will throw an error
+        # early if we can't read tags from the source file, rather
+        # than only discovering the problem after transcoding.
         AudioFile(self.src)
         encoder_opts = []
         if self.eopts:
@@ -197,7 +210,7 @@ class Transfercode(object):
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
-        # TODO: Add md5sum of source file to dest file
+        # TODO: Add md5sum of source file & eopts to dest file
         try:
             shutil.copymode(self.src, self.dest)
         except OSError:
@@ -239,14 +252,13 @@ class Transfercode(object):
     def transfer(self, ffmpeg="ffmpeg", rsync=None, force=False, dry_run=False, transcode_tempdir=None):
         """Copies or transcodes src to dest.
 
-    Destination directory must already exist.
+    Destination directory must already exist. Optional arg force
+    performs the transfer even if no update is required. Optional arg
+    transcode_tempdir specifies where to transcode before copying.
 
-    Optional arg force performs the transfer even if dest is newer.
+    Optional arg dry_run skips the actual action.
 
-    Optional arg transcode_tempdir specifies where to transcode before
-    copying.
-
-    Optional arg dry_run skips the actual action."""
+        """
 
         if force or self.needs_update():
             if not dry_run:
@@ -283,7 +295,7 @@ class Transfercode(object):
         temp_basename, temp_ext = os.path.splitext(tempname)
         temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
         Transfercode(self.src, temp_filename, self.eopts).transfer(force=True, *args, **kwargs)
-        return TransfercodeTemp(temp_filename, self.dest, self.eopts)
+        return TransfercodeTemp(temp_filename, self.dest, self.eopts, self.use_checksum)
 
 class TransfercodeTemp(Transfercode):
     """Transfercode subclass where source is a temp file.
@@ -376,11 +388,11 @@ class DestinationFinder(object):
         target_files = list(self.walk_target_files())
         return sorted(set(self.walk_existing_dest_files()).difference(self.walk_target_files()))
 
-    def transfercodes(self, eopts=None):
+    def transfercodes(self, eopts=None, use_checksum=True):
         """Generate Transfercode objects for all src files.
 
         Optional arg 'eopts' is passed to the Transfercode() constructor."""
-        return (Transfercode(src, dest, eopts) for src, dest in self.walk_source_target_pairs())
+        return (Transfercode(src, dest, eopts, use_checksum) for src, dest in self.walk_source_target_pairs())
 
 def create_dirs(dirs):
     """Ensure that a list of directories all exist"""
@@ -428,6 +440,7 @@ default_eopts = {
     # VBR ~192kbps
     'aac': '-codec:a libfdk_aac -vbr 5',
     'm4a': '-codec:a libfdk_aac -vbr 5',
+    'mp4': '-codec:a libfdk_aac -vbr 5',
     # VBR ~160kbps
     'opus': '-codec:a libopus -b:a 160k',
 }
@@ -480,6 +493,7 @@ def plac_call_main():
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
     delete=("Delete files in the destination that do not have a corresponding file in the source directory.", "flag", "D"),
     force=("Update destination files even if they are newer.", "flag", "f"),
+    no_checksum_tags=("Don't save a checksum of the source file in the destination file. Instead, determine whether to transcode a file based on whether the target file has a newer modification time.", "flag", "k"),
     temp_dir=("Temporary directory to use for transcoded files.", "option", "t", directory),
     jobs=("Number of transcoding jobs to run in parallel. Transfers will always run sequentially. The default is the number of cores available on the system. A value of 1 will run transcoding in parallel with copying. Use -j0 to force full sequential operation.", "option", "j", nonneg_int),
     quiet=("Do not print informational messages.", "flag", "q"),
@@ -491,6 +505,7 @@ def main(source_directory, destination_directory,
          ffmpeg_path="ffmpeg", encoder_options=None,
          rsync_path="rsync",
          dry_run=False, include_hidden=False, delete=False, force=False,
+         no_checksum_tags=False,
          quiet=False, verbose=False,
          temp_dir=tempfile.gettempdir(), jobs=default_job_count()):
     """Mirror a directory with transcoding.
@@ -526,21 +541,25 @@ def main(source_directory, destination_directory,
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
-    transfercodes = list(df.transfercodes(eopts=encoder_options))
+    transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
 
-    # Only emit encoder-related log messages if encoding is required
-    if need_at_least_one_transcode and encoder_options is None:
-        try:
-            encoder_options = default_eopts[target_format]
-            logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
-        except KeyError:
-            logging.debug("Using default encoder options for %s format", target_format)
-    # Only transcoding happens in parallel, not transferring, so
-    # disable parallel if no transcoding is required
-    if jobs > 0 and not need_at_least_one_transcode:
-        logging.debug("Switching to sequential mode because no transcodes are required.")
-        jobs = 0
+    if need_at_least_one_transcode:
+        # Only emit encoder-related log messages if transcoding is required
+        if encoder_options is None:
+            try:
+                encoder_options = default_eopts[target_format]
+                logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
+            except KeyError:
+                logging.debug("Using default encoder options for %s format", target_format)
+        logging.debug("Using %s to determine whether updates are needed.",
+                      "modification times" if no_checksum_tags else "checksums tags")
+    else:
+        # Only transcoding happens in parallel, not transferring, so
+        # disable parallel if no transcoding is required
+        if jobs > 0:
+            logging.debug("Switching to sequential mode because no transcodes are required.")
+            jobs = 0
 
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
     try:
