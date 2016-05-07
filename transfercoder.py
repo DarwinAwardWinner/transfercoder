@@ -10,7 +10,7 @@ except ImportError, e:
 
 import os
 import os.path
-from subprocess import call, check_output
+from subprocess import call, check_call
 import shutil
 from warnings import warn
 
@@ -173,25 +173,21 @@ class Transfercode(object):
     def needs_transcode(self):
         return self.src_ext != self.dest_ext
 
-    def transcode(self, pacpl="pacpl", dry_run=False):
+    def transcode(self, ffmpeg="ffmpeg", dry_run=False):
         logging.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
         if dry_run:
             return
         # Throw an error early if we can't read tags from the source
         # file
         AudioFile(self.src)
-        # pacpl expects a relative path with no extension, apparently
-        rel_dest = os.path.relpath(self.dest, self.src_dir)
-        rel_dest_base = os.path.splitext(rel_dest)[0]
-        command = [pacpl] + (["--eopts", self.eopts] if self.eopts else []) + \
-          ["--overwrite", "--keep", "--to", self.dest_ext, "--outfile", rel_dest_base, self.src]
-        pacpl_output = check_output(command, stderr=open(os.devnull, "w"))
-        # logging.debug("pacpl output:\n" + pacpl_output)
-        if not pacpl_output.find("Total files converted: 1, failed: 0"):
-            raise Exception("Perl Audio Converter failed")
+        command = ["ffmpeg", "-y", "-i" , self.src, "-vn", self.dest]
+        logging.debug("Transcode command: %s", repr(command))
+        check_call(command, stdout=open(os.devnull, "w"),
+                   stderr=open(os.devnull, "w"))
         if not os.path.isfile(self.dest):
-            raise Exception("Perl Audio Converter did not produce an output file")
+            raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
+        # TODO: Add md5sum of source file to dest file
         try:
             shutil.copymode(self.src, self.dest)
         except OSError:
@@ -230,7 +226,7 @@ class Transfercode(object):
         elif not os.path.isdir(self.dest_dir):
             raise IOError("Missing output directory: %s" % self.dest_dir)
 
-    def transfer(self, pacpl="pacpl", rsync=None, force=False, dry_run=False, transcode_tempdir=None):
+    def transfer(self, ffmpeg="ffmpeg", rsync=None, force=False, dry_run=False, transcode_tempdir=None):
         """Copies or transcodes src to dest.
 
     Destination directory must already exist.
@@ -247,15 +243,16 @@ class Transfercode(object):
                 self.check()
             if self.needs_transcode():
                 if transcode_tempdir:
-                    temp = self.transcode_to_tempdir(pacpl=pacpl, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run)
-                    temp.transfer(pacpl=pacpl, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None)
+                    temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run)
+                    temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None)
                 else:
-                    self.transcode(pacpl=pacpl, dry_run=dry_run)
+                    self.transcode(ffmpeg=ffmpeg, dry_run=dry_run)
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
         else:
             logging.debug("Skipping: %s -> %s", self.src, self.dest)
 
+    # TODO: implement encoder options
     def transcode_to_tempdir(self, tempdir=None, force=False, dry_run=False, *args, **kwargs):
         """Transcode a file to a tempdir.
 
@@ -373,7 +370,7 @@ class DestinationFinder(object):
         """Generate Transfercode objects for all src files.
 
         Optional arg 'eopts' is passed to the Transfercode() constructor."""
-        return (Transfercode(src,dest) for src, dest in self.walk_source_target_pairs())
+        return (Transfercode(src,dest, eopts) for src, dest in self.walk_source_target_pairs())
 
 def create_dirs(dirs):
     """Ensure that a list of directories all exist"""
@@ -394,14 +391,14 @@ class ParallelTranscodeException(Exception):
 
 class TempdirTranscoder(object):
     """A serializable wrapper for Transfercode.transcode_to_tempdir"""
-    def __init__(self, tempdir, pacpl, rsync, force):
+    def __init__(self, tempdir, ffmpeg, rsync, force):
         self.tempdir = tempdir
-        self.pacpl = pacpl
+        self.ffmpeg = ffmpeg
         self.rsync = rsync
         self.force = force
     def __call__(self, tfc):
         try:
-            return tfc.transcode_to_tempdir(tempdir=self.tempdir, pacpl=self.pacpl, rsync=self.rsync, force=self.force)
+            return tfc.transcode_to_tempdir(tempdir=self.tempdir, ffmpeg=self.ffmpeg, rsync=self.rsync, force=self.force)
         except Exception as exc:
             return ParallelTranscodeException(str(exc), exc, tfc.src)
 
@@ -440,8 +437,8 @@ def plac_call_main():
     destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", None, potential_directory),
     transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
     target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
-    pacpl_path=("The path to the Perl Audio Converter. Only required if PAC is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
-    extra_encoder_options=("Extra options to pass to the encoder. This is passed to pacpl using the '--eopts' option. If you think you need to use this, you should probably just edit pacpl's config file instead.", "option", "E", str, None, "'OPTIONS'"),
+    ffmpeg_path=("The path to ffmpeg. Only required if ffmpeg is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
+    extra_encoder_options=("[CURRENTLY UNIMPLEMENTED] Extra options to pass to the encoder. This is passed to ffmpeg using the '--eopts' option. If you think you need to use this, you should probably just edit ffmpeg's config file instead.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
     dry_run=("Don't actually modify anything.", "flag", "n"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
@@ -455,7 +452,7 @@ def plac_call_main():
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
-         pacpl_path="pacpl", extra_encoder_options="",
+         ffmpeg_path="ffmpeg", extra_encoder_options="",
          rsync_path="rsync",
          dry_run=False, include_hidden=False, delete=False, force=False,
          quiet=False, verbose=False,
@@ -464,12 +461,14 @@ def main(source_directory, destination_directory,
 
     Everything in the source directory is copied to the destination,
     except that any files of the specified transcode formats are
-    transcoded into the target format use Perl Audio Converter. All other
-    files are copied over unchanged.
+    transcoded into the target format using ffmpeg. All other files
+    are copied over unchanged.
 
     The default behavior is to transcode several lossless formats
     (flac, wavpack, wav, and ape) to ogg, and all other files are
-    copied over unmodified."""
+    copied over unmodified.
+
+    """
     if quiet:
         logging.basicConfig(level=logging.WARN)
     elif verbose:
@@ -499,81 +498,83 @@ def main(source_directory, destination_directory,
         jobs = 0
 
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
-    if not dry_run:
-        create_dirs(set(x.dest_dir for x in transfercodes))
-    failed_files = []
-    if jobs == 0:
-        logging.debug("Running in sequential mode.")
-        for tfc in transfercodes:
-            try:
-                fname = tfc.src
-                tfc = tfc.transcode_to_tempdir(tempdir=work_dir, pacpl=pacpl_path,
-                                               rsync=rsync_path, force=force, dry_run=dry_run)
-            except Exception as exc:
-                logging.exception("Exception while transcoding %s: %s", fname, exc)
-                failed_files.append(fname)
-                continue
-            try:
-                tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, dry_run=dry_run)
-            except Exception as exc:
-                logging.exception("Exception while transferring %s: %s", fname, exc)
-                failed_files.append(fname)
-                continue
-
-    else:
-        assert not dry_run, "Parallel dry run makes no sense"
-        logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
-        transcode_pool = None
-        last_file = None
-        try:
-            # Transcoding step (parallel)
-            if need_at_least_one_transcode:
-                f = TempdirTranscoder(tempdir=work_dir, pacpl=pacpl_path, rsync=rsync_path,
-                                      force=force)
-                transcode_pool = ThreadPool(jobs)
-                # Sort jobs that don't need transcoding first
-                transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
-                transcoded = transcode_pool.imap_unordered(f, transfercodes)
-            else:
-                # Skip the transcoding step if nothing needs transcoding
-                transcoded = transfercodes
-            # Transfer step (not parallel, since it is disk-bound)
-            for tfc in transcoded:
-                if isinstance(tfc, ParallelTranscodeException):
-                    pexc = tfc
-                    orig_exc = pexc.exc
-                    fname = pexc.fname
-                    try:
-                        raise orig_exc
-                    except Exception as exc:
-                        logging.exception("Exception while transcoding %s: %s", fname, exc)
-                        failed_files.append(fname)
-                        continue
-                last_file = tfc.dest
+    try:
+        if not dry_run:
+            create_dirs(set(x.dest_dir for x in transfercodes))
+        failed_files = []
+        if jobs == 0:
+            logging.debug("Running in sequential mode.")
+            for tfc in transfercodes:
                 try:
-                    tfc.transfer(pacpl=pacpl_path, rsync=rsync_path, force=force, dry_run=dry_run)
+                    fname = tfc.src
+                    tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
+                                                   rsync=rsync_path, force=force, dry_run=dry_run)
+                except Exception as exc:
+                    logging.exception("Exception while transcoding %s: %s", fname, exc)
+                    failed_files.append(fname)
+                    continue
+                try:
+                    tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                 except Exception as exc:
                     logging.exception("Exception while transferring %s: %s", fname, exc)
                     failed_files.append(fname)
                     continue
+
+        else:
+            assert not dry_run, "Parallel dry run makes no sense"
+            logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
+            transcode_pool = None
             last_file = None
-        except KeyboardInterrupt:
-            logging.error("Canceled.")
-            delete = False
-            if transcode_pool is not None:
-                logging.debug("Terminating transcode process pool")
-                transcode_pool.terminate()
-                transcode_pool = None
-        finally:
-            if transcode_pool is not None:
-                logging.debug("Closing transcode process pool")
-                transcode_pool.close()
-            if work_dir and os.path.exists(work_dir):
-                logging.debug("Deleting temporary directory")
-                shutil.rmtree(work_dir, ignore_errors=True)
-            if last_file and os.path.exists(last_file):
-                logging.info("Cleaning incomplete transfer: %s", last_file)
-                os.remove(last_file)
+            try:
+                # Transcoding step (parallel)
+                if need_at_least_one_transcode:
+                    f = TempdirTranscoder(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path,
+                                          force=force)
+                    transcode_pool = ThreadPool(jobs)
+                    # Sort jobs that don't need transcoding first
+                    transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
+                    transcoded = transcode_pool.imap_unordered(f, transfercodes)
+                else:
+                    # Skip the transcoding step if nothing needs transcoding
+                    transcoded = transfercodes
+                # Transfer step (not parallel, since it is disk-bound)
+                for tfc in transcoded:
+                    if isinstance(tfc, ParallelTranscodeException):
+                        pexc = tfc
+                        orig_exc = pexc.exc
+                        fname = pexc.fname
+                        try:
+                            raise orig_exc
+                        except Exception as exc:
+                            logging.exception("Exception while transcoding %s: %s", fname, exc)
+                            failed_files.append(fname)
+                            continue
+                    last_file = tfc.dest
+                    try:
+                        tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
+                    except Exception as exc:
+                        logging.exception("Exception while transferring %s: %s", fname, exc)
+                        failed_files.append(fname)
+                        continue
+                last_file = None
+            except KeyboardInterrupt:
+                logging.error("Canceled.")
+                delete = False
+                if transcode_pool is not None:
+                    logging.debug("Terminating transcode process pool")
+                    transcode_pool.terminate()
+                    transcode_pool = None
+            finally:
+                if transcode_pool is not None:
+                    logging.debug("Closing transcode process pool")
+                    transcode_pool.close()
+                if last_file and os.path.exists(last_file):
+                    logging.info("Cleaning incomplete transfer: %s", last_file)
+                    os.remove(last_file)
+    finally:
+        if work_dir and os.path.exists(work_dir):
+            logging.debug("Deleting temporary directory")
+            shutil.rmtree(work_dir, ignore_errors=True)
     if delete:
         for f in df.walk_extra_dest_files():
             logging.info("Deleting: %s", f)
