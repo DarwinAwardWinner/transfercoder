@@ -515,13 +515,6 @@ def main(source_directory, destination_directory,
     if target_format in transcode_formats:
         argument_error('The target format must not be one of the transcode formats')
 
-    if encoder_options is None:
-        try:
-            encoder_options = default_eopts[target_format]
-            logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
-        except KeyError:
-            logging.debug("Using default encoder options for %s format", target_format)
-
     if dry_run:
         logging.info("Running in --dry_run mode. Nothing actually happens.")
         # No point doing nothing in parallel
@@ -535,7 +528,16 @@ def main(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
     transfercodes = list(df.transfercodes(eopts=encoder_options))
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
-    # Only transcoding happens in parallel
+
+    # Only emit encoder-related log messages if encoding is required
+    if need_at_least_one_transcode and encoder_options is None:
+        try:
+            encoder_options = default_eopts[target_format]
+            logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
+        except KeyError:
+            logging.debug("Using default encoder options for %s format", target_format)
+    # Only transcoding happens in parallel, not transferring, so
+    # disable parallel if no transcoding is required
     if jobs > 0 and not need_at_least_one_transcode:
         logging.debug("Switching to sequential mode because no transcodes are required.")
         jobs = 0
