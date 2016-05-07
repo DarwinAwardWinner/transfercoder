@@ -21,6 +21,7 @@ import tempfile
 from itertools import *
 from multiprocessing.pool import ThreadPool
 from mutagen import File as MusicFile
+from mutagen.aac import AACError
 from subprocess import call, check_call
 
 def default_job_count():
@@ -135,13 +136,16 @@ def copy_tags (src, dest):
 
 Excludes format-specific tags and replaygain info, which does not
 carry across formats."""
-    m_src = AudioFile(src, blacklist = blacklist_regexes)
-    m_dest = AudioFile(dest, blacklist = m_src.blacklist)
-    m_dest.clear()
-    m_dest.update(m_src)
-    logging.debug("Added tags to dest file:\n%s",
-                  "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
-    m_dest.write()
+    try:
+        m_src = AudioFile(src, blacklist = blacklist_regexes)
+        m_dest = AudioFile(dest, blacklist = m_src.blacklist)
+        m_dest.clear()
+        m_dest.update(m_src)
+        logging.debug("Added tags to dest file:\n%s",
+                      "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
+        m_dest.write()
+    except AACError:
+        logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
 class Transfercode(object):
     def __init__(self, src, dest, eopts=None):
@@ -447,8 +451,8 @@ def plac_call_main():
     # arg=(helptext, kind, abbrev, type, choices, metavar)
     source_directory=("The directory with all your music in it.", "positional", None, directory),
     destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", None, potential_directory),
-    transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
-    target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
+    transcode_formats=("A comma-separated list of input file extensions that must be transcoded. ffmpeg must be compiled with support for decoding these formats.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
+    target_format=("All input transcode formats will be transcoded to this output format. ffmpeg must be compiled with support for encoding this format.", "option", "o", str),
     ffmpeg_path=("The path to ffmpeg. Only required if ffmpeg is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
     encoder_options=("Extra encoder options to pass to ffmpeg.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
