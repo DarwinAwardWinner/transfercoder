@@ -412,6 +412,26 @@ class TempdirTranscoder(object):
         except Exception as exc:
             return ParallelTranscodeException(str(exc), exc, tfc.src)
 
+# See:
+# https://trac.ffmpeg.org/wiki/Encode/HighQualityAudio
+# https://trac.ffmpeg.org/wiki/Encode/AAC
+# https://trac.ffmpeg.org/wiki/Encode/MP3
+# https://trac.ffmpeg.org/wiki/TheoraVorbisEncodingGuide
+# http://blog.codinghorror.com/concluding-the-great-mp3-bitrate-experiment/
+# http://wiki.hydrogenaud.io/index.php?title=Transparency
+# http://soundexpert.org/encoders-128-kbps
+default_eopts = {
+    # VBR ~192kbps
+    'mp3': '-codec:a libmp3lame -q:a 2',
+    # VBR ~160kbps
+    'ogg': '-codec:a libvorbis -q:a 5',
+    # VBR ~192kbps
+    'aac': '-codec:a libfdk_aac -vbr 5',
+    'm4a': '-codec:a libfdk_aac -vbr 5',
+    # VBR ~160kbps
+    'opus': '-codec:a libopus -b:a 160k',
+}
+
 # Plac types
 def comma_delimited_set(x):
     # Handles stripping spaces and eliminating zero-length items
@@ -494,6 +514,13 @@ def main(source_directory, destination_directory,
 
     if target_format in transcode_formats:
         argument_error('The target format must not be one of the transcode formats')
+
+    if encoder_options is None:
+        try:
+            encoder_options = default_eopts[target_format]
+            logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
+        except KeyError:
+            logging.debug("Using default encoder options for %s format", target_format)
 
     if dry_run:
         logging.info("Running in --dry_run mode. Nothing actually happens.")
