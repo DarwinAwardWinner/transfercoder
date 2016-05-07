@@ -196,7 +196,7 @@ class Transfercode(object):
             m.update(open(self.src, 'rb').read())
             # We also hash the encoder options, since if those change,
             # we need to re-transcode.
-            m.update(self.eopts)
+            m.update(self.eopts or "")
             self._src_checksum = m.hexdigest()[:16]
         return self._src_checksum
 
