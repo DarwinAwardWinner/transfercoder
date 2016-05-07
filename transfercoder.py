@@ -8,6 +8,7 @@ except ImportError, e:
     raise e
 
 import UserDict
+import hashlib
 import logging
 import multiprocessing
 import os
@@ -152,6 +153,22 @@ carry across formats."""
     except AACError:
         logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
+def read_checksum_tag(fname):
+    afile = AudioFile(fname, easy=False)
+    try:
+        return afile['transfercoder_src_checksum'][0]
+    except KeyError:
+        logging.debug("Could not read checksum tag from %s", repr(fname))
+        return None
+
+def write_checksum_tag(fname, cksum):
+    afile = AudioFile(fname, easy=False)
+    try:
+        afile['transfercoder_src_checksum'] = cksum
+        afile.write()
+    except Exception:
+        logging.warn("Could not write checksum tag to %s", repr(fname))
+
 class Transfercode(object):
     def __init__(self, src, dest, eopts=None, use_checksum=True):
         self.src = src
@@ -162,6 +179,8 @@ class Transfercode(object):
         self.dest_ext = splitext_afterdot(self.dest)[1]
         self.eopts = eopts
         self.use_checksum = use_checksum
+        self._src_checksum = None
+        self._saved_checksum = None
 
     def __repr__(self):
         return "%s(src=%s, dest=%s, epots=%s, use_checksum=%s)" % \
@@ -171,19 +190,45 @@ class Transfercode(object):
     def __str__(self):
         return repr(self)
 
+    def source_checksum(self):
+        if self._src_checksum is None:
+            m = hashlib.sha256()
+            m.update(open(self.src, 'rb').read())
+            # We also hash the encoder options, since if those change,
+            # we need to re-transcode.
+            m.update(self.eopts)
+            self._src_checksum = m.hexdigest()[:16]
+        return self._src_checksum
+
+    def saved_checksum(self):
+        if self._saved_checksum is None:
+            self._saved_checksum = read_checksum_tag(self.dest)
+            if self._saved_checksum is None:
+                # Empty string is still false, but is used to
+                # distinguish the fact we tried and failed to read the
+                # checksum
+                self._saved_checksum = ""
+        return self._saved_checksum
+
     def needs_update(self):
         """Returns True if dest file needs update.
 
         This is true when the dest file does not exist, or exists but
         is older than the source file."""
+        if not os.path.exists(self.dest):
+            return True
         if self.use_checksum and self.needs_transcode():
-            raise Exception("Unimplemented")
-        else:
-            if not os.path.exists(self.dest):
-                return True
-            src_mtime = os.path.getmtime(self.src)
-            dest_mtime = os.path.getmtime(self.dest)
-            return src_mtime > dest_mtime
+            saved_cksum = self.saved_checksum()
+            if saved_cksum:
+                src_cksum = self.source_checksum()
+                return not saved_cksum == src_cksum
+            else:
+                logging.warn("No checksum found in destination file %s. Falling back to timestamp check.",
+                             repr(self.dest))
+        # If we haven't returned by now, we need to check based on the modtimes
+        src_mtime = os.path.getmtime(self.src)
+        dest_mtime = os.path.getmtime(self.dest)
+        return src_mtime > dest_mtime
 
     def needs_transcode(self):
         """Returns True if source and dest have different formats"""
@@ -198,6 +243,9 @@ class Transfercode(object):
         # early if we can't read tags from the source file, rather
         # than only discovering the problem after transcoding.
         AudioFile(self.src)
+
+        # Clear the cached checksum from the dest file, if any
+        self._saved_checksum = None
         encoder_opts = []
         if self.eopts:
             encoder_opts = shlex.split(self.eopts)
@@ -210,7 +258,9 @@ class Transfercode(object):
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
-        # TODO: Add md5sum of source file & eopts to dest file
+        if self.use_checksum:
+            logging.debug("Saving checksum to dest file %s: %s", repr(self.dest), self.source_checksum())
+            write_checksum_tag(self.dest, self.source_checksum())
         try:
             shutil.copymode(self.src, self.dest)
         except OSError:
@@ -259,7 +309,6 @@ class Transfercode(object):
     Optional arg dry_run skips the actual action.
 
         """
-
         if force or self.needs_update():
             if not dry_run:
                 self.check()
@@ -537,6 +586,9 @@ def main(source_directory, destination_directory,
             logging.debug("Switching to sequential mode because --dry_run was specified.")
             jobs = 0
 
+    logging.debug("Using %s to determine whether updates are needed.",
+                  "file modification times" if no_checksum_tags else "checksum tags")
+
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
@@ -552,8 +604,6 @@ def main(source_directory, destination_directory,
                 logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
             except KeyError:
                 logging.debug("Using default encoder options for %s format", target_format)
-        logging.debug("Using %s to determine whether updates are needed.",
-                      "modification times" if no_checksum_tags else "checksums tags")
     else:
         # Only transcoding happens in parallel, not transferring, so
         # disable parallel if no transcoding is required
