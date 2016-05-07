@@ -6,7 +6,7 @@ formats. All the solutions that I've seen to this problem have at least one of t
 
 * Assume that I want to transcode *everything* into a single format,
   even though the device supports multiple formats.
-* Incorrect handling of tags
+* Incorrect handling of tags (title, artist, etc.) during transcoding
 * Require a large media player
 
 So I wrote my own script to do it. You specify your music directory
@@ -32,22 +32,10 @@ See the help for more options. Or ask me.
 
 # Prerequisites
 
-* Python with plac module
-* Quod Libet - For copying audio tags
-* Perl Audio Converter (yes, *Perl*) - For transcoding
-* Audio encoders and/or decoders for the formats that you are
-  transcoding
+* Python with the plac and mutagen modules installed
+* ffmpeg - For transcoding (Make sure ffmpeg is complied with encode
+  and/or decode support for the formats you require)
 * Rsync (optional) - For faster copying of small changes
-
-The prerequisites are a little odd. This Python script calls a Perl
-script for transcoding. Why? Because it took about five lines of code
-to implement it. I would rather do it via Gstreamer, but I haven't
-used it before and it looks like it would be a lot more than five
-lines of code. PAC encapsulates the logic for choosing the proper
-audio decoders and encoders, and Quod Libet's MusicFile class does the
-same for loading and saving tags. Note that you don't need to actually
-*use* Quod Libet the music player. The script simply requires one of
-its modules.
 
 As indicated, rsync is an optional dependency. It is primarily be
 useful if you changed only file tags on files that do not require
@@ -63,14 +51,10 @@ transfer.
   relative or absolute paths, and the device may expect them in odd
   formats. You'll need to come up with your own solution here, or just
   use a media player that handles them.
-* Replaygain tags are not copied. This is because in my experience,
-  different formats of the same song need different adjustments, even
-  though in theory they should have identical volumes. So replaygain
-  your library on your device after syncing. If only there was a
+* Replaygain tags are intentionally not copied. This is because in my
+  experience, different formats of the same song need different
+  adjustments, even though in theory they should have identical
+  volumes. So just add replaygain to your transcoded library on your
+  device after syncing. If only there was a
   [tool](https://github.com/DarwinAwardWinner/rganalysis) for that
   too.
-
-# Why
-
-This written both as a useful tool for myself, as well as a way for me
-to write a basic parallel python program.
