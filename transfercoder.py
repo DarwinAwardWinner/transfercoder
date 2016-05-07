@@ -17,12 +17,7 @@ from warnings import warn
 import os, sys, re, UserDict
 from warnings import warn
 from itertools import *
-import quodlibet.config
-try:
-    quodlibet.config.init()
-except ValueError:
-    pass
-from quodlibet.formats import MusicFile
+from mutagen import File as MusicFile
 import tempfile
 import multiprocessing
 import logging
@@ -87,7 +82,8 @@ class AudioFile(UserDict.DictMixin):
     Or grab the actual underlying quodlibet format object from the
     .data field and get your hands dirty."""
     def __init__(self, filename, blacklist=[]):
-        self.data = MusicFile(filename)
+        self.filename = filename
+        self.data = MusicFile(self.filename, easy=True)
         if self.data is None:
             raise ValueError("Unable to identify %s as a music file" % (repr(filename)))
         # Also exclude mutagen's internal tags
@@ -101,7 +97,11 @@ class AudioFile(UserDict.DictMixin):
         if self.blacklisted(item):
             warn("%s is a blacklisted key." % item)
         else:
-            return self.data.__setitem__(item, value)
+            try:
+                return self.data.__setitem__(item, value)
+            except KeyError:
+                logging.debug("Skipping unsupported tag %s for file type %s",
+                              item, type(self.data))
     def __delitem__(self, item):
         if self.blacklisted(item):
             warn("%s is a blacklisted key." % item)
@@ -120,7 +120,7 @@ class AudioFile(UserDict.DictMixin):
     def keys(self):
         return [ key for key in self.data.keys() if not self.blacklisted(key) ]
     def write(self):
-        return self.data.write()
+        return self.data.save()
 
 # A list of regexps matching non-transferrable tags, like file format
 # info and replaygain info. This will not be transferred from source,
@@ -139,6 +139,8 @@ carry across formats."""
     m_dest = AudioFile(dest, blacklist = m_src.blacklist)
     m_dest.clear()
     m_dest.update(m_src)
+    logging.debug("Added tags to dest file:\n%s",
+                  "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
     m_dest.write()
 
 class Transfercode(object):
