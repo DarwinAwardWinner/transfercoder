@@ -23,7 +23,15 @@ from itertools import *
 from multiprocessing.pool import ThreadPool
 from mutagen import File as MusicFile
 from mutagen.aac import AACError
+from mutagen.easyid3 import EasyID3
+from mutagen.easymp4 import EasyMP4Tags
 from subprocess import call, check_call
+
+# Support checksums for MP3 and M4A/MP4
+EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
+                        'TRANSFERCODER_SRC_CHECKSUM')
+EasyMP4Tags.RegisterFreeformKey('transfercoder_src_checksum',
+                                'Transfercoder Source Checksum')
 
 def default_job_count():
     try:
@@ -154,7 +162,7 @@ carry across formats."""
         logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
 def read_checksum_tag(fname):
-    afile = AudioFile(fname, easy=False)
+    afile = AudioFile(fname, easy=True)
     try:
         return afile['transfercoder_src_checksum'][0]
     except KeyError:
@@ -162,7 +170,7 @@ def read_checksum_tag(fname):
         return None
 
 def write_checksum_tag(fname, cksum):
-    afile = AudioFile(fname, easy=False)
+    afile = AudioFile(fname, easy=True)
     try:
         afile['transfercoder_src_checksum'] = cksum
         afile.write()
