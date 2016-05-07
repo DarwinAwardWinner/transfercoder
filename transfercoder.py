@@ -13,6 +13,7 @@ import multiprocessing
 import os
 import os.path
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -174,12 +175,18 @@ class Transfercode(object):
 
     def transcode(self, ffmpeg="ffmpeg", dry_run=False):
         logging.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
+        logging.debug("Transcoding: %s", repr(self))
         if dry_run:
             return
         # Throw an error early if we can't read tags from the source
         # file
         AudioFile(self.src)
-        command = ["ffmpeg", "-y", "-i" , self.src, "-vn", self.dest]
+        encoder_opts = []
+        if self.eopts:
+            encoder_opts = shlex.split(self.eopts)
+
+        command = ["ffmpeg", "-y", "-i" , self.src, "-vn"] + \
+                  encoder_opts + [ self.dest]
         logging.debug("Transcode command: %s", repr(command))
         check_call(command, stdout=open(os.devnull, "w"),
                    stderr=open(os.devnull, "w"))
@@ -271,7 +278,7 @@ class Transfercode(object):
         tempname = os.path.split(self.dest)[1]
         temp_basename, temp_ext = os.path.splitext(tempname)
         temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
-        Transfercode(self.src, temp_filename).transfer(force=True, *args, **kwargs)
+        Transfercode(self.src, temp_filename, self.eopts).transfer(force=True, *args, **kwargs)
         return TransfercodeTemp(temp_filename, self.dest, self.eopts)
 
 class TransfercodeTemp(Transfercode):
@@ -369,7 +376,7 @@ class DestinationFinder(object):
         """Generate Transfercode objects for all src files.
 
         Optional arg 'eopts' is passed to the Transfercode() constructor."""
-        return (Transfercode(src,dest, eopts) for src, dest in self.walk_source_target_pairs())
+        return (Transfercode(src, dest, eopts) for src, dest in self.walk_source_target_pairs())
 
 def create_dirs(dirs):
     """Ensure that a list of directories all exist"""
@@ -443,7 +450,7 @@ def plac_call_main():
     transcode_formats=("A comma-separated list of input file extensions that must be transcoded.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
     target_format=("All input transcode formats will be transcoded to this output format.", "option", "o", str),
     ffmpeg_path=("The path to ffmpeg. Only required if ffmpeg is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
-    extra_encoder_options=("[CURRENTLY UNIMPLEMENTED] Extra options to pass to the encoder. This is passed to ffmpeg using the '--eopts' option. If you think you need to use this, you should probably just edit ffmpeg's config file instead.", "option", "E", str, None, "'OPTIONS'"),
+    encoder_options=("Extra encoder options to pass to ffmpeg.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
     dry_run=("Don't actually modify anything.", "flag", "n"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
@@ -457,7 +464,7 @@ def plac_call_main():
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
-         ffmpeg_path="ffmpeg", extra_encoder_options="",
+         ffmpeg_path="ffmpeg", encoder_options=None,
          rsync_path="rsync",
          dry_run=False, include_hidden=False, delete=False, force=False,
          quiet=False, verbose=False,
@@ -495,7 +502,7 @@ def main(source_directory, destination_directory,
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
-    transfercodes = list(df.transfercodes(eopts=extra_encoder_options))
+    transfercodes = list(df.transfercodes(eopts=encoder_options))
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
     # Only transcoding happens in parallel
     if jobs > 0 and not need_at_least_one_transcode:
