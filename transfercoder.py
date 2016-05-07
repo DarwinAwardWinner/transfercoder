@@ -1,27 +1,26 @@
 #!/usr/bin/env python
 
+from warnings import warn
 try:
     import plac
-    from placsupport import argument_error
-    from placsupport.types import *
 except ImportError, e:
-    print "You must install the plac and placsupport modules to use this script."
+    warn("You must install the plac module to use this script.")
     raise e
 
+import UserDict
+import logging
+import multiprocessing
 import os
 import os.path
-from subprocess import call, check_call
+import re
 import shutil
-from warnings import warn
-
-import os, sys, re, UserDict
-from warnings import warn
-from itertools import *
-from mutagen import File as MusicFile
+import sys
 import tempfile
-import multiprocessing
-import logging
+
+from itertools import *
 from multiprocessing.pool import ThreadPool
+from mutagen import File as MusicFile
+from subprocess import call, check_call
 
 def default_job_count():
     try:
@@ -426,6 +425,12 @@ def potential_directory(x):
         return directory(x)
     else:
         return x
+
+def nonneg_int(x):
+    x = int(x)
+    if x < 0:
+        raise ValueError("Not a nonnegative integer")
+    return x
 
 # Entry point
 def plac_call_main():
