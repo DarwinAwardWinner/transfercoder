@@ -18,9 +18,18 @@ name and changing the extension. All other files are copied with no
 modification. This includes *all* other files, not just other music
 files. So your album art and stuff gets transferred too. Transcoding
 happens in parallel if you have multiple cores avilable. Running the
-same script a second time will only update files that are newer in
+same script a second time will only update files that have changed in
 your music directory. The default transcoding options will transcode
 several lossless formats to ogg.
+
+In order to know when a source file has been updated, this script
+saves the first 32 bytes sha256 hash of the source file in the
+`transfercoder_src_checksum` tag in each transcoded destination file.
+This means that simply changing the time stamps of files in your music
+directory will not cause them all the be transcoded again. If you
+don't want this, then use the `--no-checksum-tags` option, and it will
+avoid adding these tags and instead rely on the file time stamps,
+transcoding a file any time the source file is newer.
 
 # Usage
 
