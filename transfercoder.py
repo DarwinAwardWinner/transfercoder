@@ -162,16 +162,16 @@ carry across formats."""
         logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
 def read_checksum_tag(fname):
-    afile = AudioFile(fname, easy=True)
     try:
+        afile = AudioFile(fname, easy=True)
         return afile['transfercoder_src_checksum'][0]
-    except KeyError:
+    except Exception:
         logging.debug("Could not read checksum tag from %s", repr(fname))
         return None
 
 def write_checksum_tag(fname, cksum):
-    afile = AudioFile(fname, easy=True)
     try:
+        afile = AudioFile(fname, easy=True)
         afile['transfercoder_src_checksum'] = cksum
         afile.write()
     except Exception:
@@ -205,34 +205,43 @@ class Transfercode(object):
             # We also hash the encoder options, since if those change,
             # we need to re-transcode.
             m.update(self.eopts or "")
-            self._src_checksum = m.hexdigest()[:16]
+            self._src_checksum = m.hexdigest()[:32]
         return self._src_checksum
 
     def saved_checksum(self):
         if self._saved_checksum is None:
+            logging.debug("Reading checksum from %s", repr(self.dest))
             self._saved_checksum = read_checksum_tag(self.dest)
             if self._saved_checksum is None:
                 # Empty string is still false, but is used to
                 # distinguish the fact we tried and failed to read the
                 # checksum
                 self._saved_checksum = ""
-        return self._saved_checksum
+        return self._saved_checksum or None
+
+    def checksum_current(self):
+        """Returns True, False, or None for no checksum."""
+        return self.saved_checksum() and \
+            self.saved_checksum() == self.source_checksum()
+
+    def save_checksum(self):
+        # Clear the cached checksum from the dest file, if any
+        self._saved_checksum = None
+        logging.info("Saving checksum to destination file %s", repr(self.dest))
+        write_checksum_tag(self.dest, self.source_checksum())
 
     def needs_update(self):
         """Returns True if dest file needs update.
 
-        This is true when the dest file does not exist, or exists but
+        TODO UPDATE This is true when the dest file does not exist, or exists but
         is older than the source file."""
         if not os.path.exists(self.dest):
             return True
-        if self.use_checksum and self.needs_transcode():
-            saved_cksum = self.saved_checksum()
-            if saved_cksum:
-                src_cksum = self.source_checksum()
-                return not saved_cksum == src_cksum
-            else:
-                logging.warn("No checksum found in destination file %s. Falling back to timestamp check.",
-                             repr(self.dest))
+        # Only use checksums for transcodable files
+        if self.needs_transcode() and self.use_checksum:
+            current = self.checksum_current()
+            if current is not None:
+                return not current
         # If we haven't returned by now, we need to check based on the modtimes
         src_mtime = os.path.getmtime(self.src)
         dest_mtime = os.path.getmtime(self.dest)
@@ -252,8 +261,6 @@ class Transfercode(object):
         # than only discovering the problem after transcoding.
         AudioFile(self.src)
 
-        # Clear the cached checksum from the dest file, if any
-        self._saved_checksum = None
         encoder_opts = []
         if self.eopts:
             encoder_opts = shlex.split(self.eopts)
@@ -328,9 +335,10 @@ class Transfercode(object):
                     self.transcode(ffmpeg=ffmpeg, dry_run=dry_run)
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
-        elif self.needs_transcode() and self.use_checksum and not self.saved_checksum():
-            logging.info("Saving checksum to destination file")
-            write_checksum_tag(self.dest, self.source_checksum())
+        # If the destination is missing its checksum, we still need to
+        # add it even though we're not updating the file.
+        elif not dry_run and self.use_checksum and self.needs_transcode() and not self.checksum_current():
+            self.save_checksum()
         else:
             logging.debug("Skipping: %s -> %s", self.src, self.dest)
 
@@ -354,8 +362,8 @@ class Transfercode(object):
         tempname = os.path.split(self.dest)[1]
         temp_basename, temp_ext = os.path.splitext(tempname)
         temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
-        Transfercode(self.src, temp_filename, self.eopts).transfer(force=True, *args, **kwargs)
-        return TransfercodeTemp(temp_filename, self.dest, self.eopts, self.use_checksum)
+        Transfercode(self.src, temp_filename, self.eopts, self.use_checksum).transfer(force=True, *args, **kwargs)
+        return TransfercodeTemp(temp_filename, self.dest, None, False)
 
 class TransfercodeTemp(Transfercode):
     """Transfercode subclass where source is a temp file.
@@ -368,6 +376,9 @@ The only addition is that the source file is deleted after transfer."""
     def transcode_to_tempdir(self, *args, **kwargs):
         """This would be redundant."""
         return self
+
+    def needs_update(self):
+        return True
 
 def is_subpath(path, parent):
     """Returns true if path is a subpath of parent.
@@ -461,28 +472,26 @@ def create_dirs(dirs):
             logging.debug("Creating directory: %s", d)
             os.makedirs(d)
 
-class ParallelTranscodeException(Exception):
-    def __init__(self, message, exc, fname):
+class ParallelException(Exception):
+    def __init__(self, message, exc, obj):
 
         # Call the base class constructor with the parameters it needs
-        super(ParallelTranscodeException, self).__init__(message)
+        super(ParallelException, self).__init__(message)
 
         # Now for your custom code...
         self.exc = exc
-        self.fname = fname
+        self.obj = obj
 
-class TempdirTranscoder(object):
-    """A serializable wrapper for Transfercode.transcode_to_tempdir"""
-    def __init__(self, tempdir, ffmpeg, rsync, force):
-        self.tempdir = tempdir
-        self.ffmpeg = ffmpeg
-        self.rsync = rsync
-        self.force = force
-    def __call__(self, tfc):
+class ParallelMethodCaller(object):
+    def __init__(self, methodname, *args, **kwargs):
+        self.methodname = methodname
+        self.args = args
+        self.kwargs = kwargs
+    def __call__(self, obj):
         try:
-            return tfc.transcode_to_tempdir(tempdir=self.tempdir, ffmpeg=self.ffmpeg, rsync=self.rsync, force=self.force)
+            return getattr(obj, self.methodname)(*self.args, **self.kwargs)
         except Exception as exc:
-            return ParallelTranscodeException(str(exc), exc, tfc.src)
+            return ParallelException(str(exc), exc, obj)
 
 # See:
 # https://trac.ffmpeg.org/wiki/Encode/HighQualityAudio
@@ -653,8 +662,8 @@ def main(source_directory, destination_directory,
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
-                    f = TempdirTranscoder(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path,
-                                          force=force)
+                    f = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir,
+                                             ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
@@ -664,10 +673,11 @@ def main(source_directory, destination_directory,
                     transcoded = transfercodes
                 # Transfer step (not parallel, since it is disk-bound)
                 for tfc in transcoded:
-                    if isinstance(tfc, ParallelTranscodeException):
-                        pexc = tfc
-                        orig_exc = pexc.exc
-                        fname = pexc.fname
+                    if isinstance(tfc, ParallelException):
+                        par_exc = tfc
+                        orig_exc = par_exc.exc
+                        tfc = par_exc.obj
+                        fname = tfc.src
                         try:
                             raise orig_exc
                         except Exception as exc:
