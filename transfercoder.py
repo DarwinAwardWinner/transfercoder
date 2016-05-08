@@ -631,6 +631,7 @@ def main(source_directory, destination_directory,
             logging.debug("Switching to sequential mode because no transcodes are required.")
             jobs = 0
 
+    finished = False
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
     try:
         if not dry_run:
@@ -699,6 +700,7 @@ def main(source_directory, destination_directory,
                     logging.debug("Terminating transcode process pool")
                     transcode_pool.terminate()
                     transcode_pool = None
+                raise
             finally:
                 if transcode_pool is not None:
                     logging.debug("Closing transcode process pool")
@@ -706,24 +708,34 @@ def main(source_directory, destination_directory,
                 if last_file and os.path.exists(last_file):
                     logging.info("Cleaning incomplete transfer: %s", last_file)
                     os.remove(last_file)
+        if delete:
+            for f in df.walk_extra_dest_files():
+                logging.info("Deleting: %s", f)
+                if not dry_run:
+                    os.remove(f)
+        if work_dir and os.path.exists(work_dir):
+            logging.debug("Deleting temporary directory")
+            shutil.rmtree(work_dir, ignore_errors=True)
+        finished = True
     finally:
         if work_dir and os.path.exists(work_dir):
             logging.debug("Deleting temporary directory")
             shutil.rmtree(work_dir, ignore_errors=True)
-    if delete:
-        for f in df.walk_extra_dest_files():
-            logging.info("Deleting: %s", f)
-            if not dry_run:
-                os.remove(f)
-    if failed_files:
-        logging.error("The following %s files were not processed successfully:\n%s",
-                      len(failed_files),
-                      "\n".join("\t" + f for f in failed_files))
-        logging.info("Finished with some errors (see above).")
-    else:
-        logging.info("Finished with no errors.")
-    if dry_run:
-        logging.info("Ran in --dry_run mode. Nothing actually happened.")
+        if failed_files:
+            logging.error("The following %s files were not processed successfully:\n%s",
+                          len(failed_files),
+                          "\n".join("\t" + f for f in failed_files))
+            if finished:
+                logging.info("Finished with some errors (see above).")
+            else:
+                logging.info("Exited after being cancelled, with some errors (see above).")
+        else:
+            if finished:
+                logging.info("Finished with no errors.")
+            else:
+                logging.info("Exited after being canceled, with no errors so far.")
+        if dry_run:
+            logging.info("Ran in --dry_run mode. Nothing actually happened.")
 
 if __name__ == "__main__":
     plac_call_main()
