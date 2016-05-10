@@ -279,8 +279,8 @@ class Transfercode(object):
             logging.log(loglevel, "Need to %s file %s to %s because the source file is newer than the destination file",
                         verb, repr(self.src), repr(self.dest))
         else:
-            logging.log(loglevel, "Don't to %s file %s to %s because the destination file is newer than the source file",
-                        verb, repr(self.src), repr(self.dest))
+            logging.debug("Don't to %s file %s to %s because the destination file is newer than the source file",
+                          verb, repr(self.src), repr(self.dest))
         return src_newer
 
     def transcode(self, ffmpeg="ffmpeg", dry_run=False):
