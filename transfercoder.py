@@ -645,7 +645,9 @@ def main(source_directory, destination_directory,
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
+    logging.info("Searching for source files to transfer...")
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
+    logging.info("Found %s files to check", len(transfercodes))
     need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode, transfercodes))
 
     if need_at_least_one_transcode:
