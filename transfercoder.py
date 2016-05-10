@@ -267,7 +267,7 @@ class Transfercode(object):
                     logging.debug("Don't need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
                                   repr(self.src), repr(self.dest))
                 else:
-                    logging.log(loglevel, "Need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
+                    logging.log(loglevel, "Need to transcode %s to %s because the destination's checksum tag does not match the source's checksum.",
                                 repr(self.src), repr(self.dest))
                 return not current
         # If we haven't returned by now, we need to check based on the modtimes
