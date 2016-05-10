@@ -189,6 +189,7 @@ class Transfercode(object):
         self.use_checksum = use_checksum
         self._src_checksum = None
         self._saved_checksum = None
+        self.needs_transcode = self.src_ext != self.dest_ext
 
     def __repr__(self):
         return "%s(src=%s, dest=%s, epots=%s, use_checksum=%s)" % \
@@ -230,26 +231,57 @@ class Transfercode(object):
         logging.info("Saving checksum to destination file %s", repr(self.dest))
         write_checksum_tag(self.dest, self.source_checksum())
 
-    def needs_update(self):
+    def needs_update(self, loglevel=logging.DEBUG):
         """Returns True if dest file needs update.
 
-        TODO UPDATE This is true when the dest file does not exist, or exists but
-        is older than the source file."""
+        For transcodable files, if self.use_checksum is True, the
+        checksum of the source file will be checked against the
+        checksum stored in the tags of the destination file. If they
+        don't match, this returns True. If self.use_checksum is False
+        or the source file does not need to be transcoded, this
+        returns True if the source file is newer than the destination.
+
+        By default, log messages explaining the status of each file
+        that needs updating will be emitted as debug messages. Pass an
+        alternate level for the loglevel argument to change this.
+        (This is needed because this method is called multiple times,
+        so it would produce multiple redundant messages if not for
+        this option.)
+
+        """
+        verb = "transcode" if self.needs_transcode else "copy"
         if not os.path.exists(self.dest):
+            logging.log(loglevel, "Need to %s file %s to %s because the destination file does not exist yet",
+                        verb, repr(self.src), repr(self.dest))
             return True
         # Only use checksums for transcodable files
-        if self.needs_transcode() and self.use_checksum:
+        if self.needs_transcode and self.use_checksum:
             current = self.checksum_current()
-            if current is not None:
+            if current is None:
+                logging.log(loglevel,
+                            "Expected checksum not found in tags for destination file %s. Falling back to modification time checking.",
+                            self.dest)
+            else:
+                logging.debug("Using checksum to determine update status for %s", repr(self))
+                if current:
+                    logging.debug("Don't need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
+                                  repr(self.src), repr(self.dest))
+                else:
+                    logging.log(loglevel, "Need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
+                                repr(self.src), repr(self.dest))
                 return not current
         # If we haven't returned by now, we need to check based on the modtimes
+        logging.debug("Using modification times to determine update status for %s", repr(self))
         src_mtime = os.path.getmtime(self.src)
         dest_mtime = os.path.getmtime(self.dest)
-        return src_mtime > dest_mtime
-
-    def needs_transcode(self):
-        """Returns True if source and dest have different formats"""
-        return self.src_ext != self.dest_ext
+        src_newer = src_mtime > dest_mtime
+        if src_newer:
+            logging.log(loglevel, "Need to %s file %s to %s because the source file is newer than the destination file",
+                        verb, repr(self.src), repr(self.dest))
+        else:
+            logging.log(loglevel, "Don't to %s file %s to %s because the destination file is newer than the source file",
+                        verb, repr(self.src), repr(self.dest))
+        return src_newer
 
     def transcode(self, ffmpeg="ffmpeg", dry_run=False):
         logging.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
@@ -327,7 +359,7 @@ class Transfercode(object):
         if force or self.needs_update():
             if not dry_run:
                 self.check()
-            if self.needs_transcode():
+            if self.needs_transcode:
                 if transcode_tempdir:
                     temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run)
                     temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None)
@@ -337,7 +369,7 @@ class Transfercode(object):
                 self.copy(rsync=rsync, dry_run=dry_run)
         # If the destination is missing its checksum, we still need to
         # add it even though we're not updating the file.
-        elif not dry_run and self.use_checksum and self.needs_transcode() and not self.checksum_current():
+        elif not dry_run and self.use_checksum and self.needs_transcode and not self.checksum_current():
             self.save_checksum()
         else:
             logging.debug("Skipping: %s -> %s", self.src, self.dest)
@@ -355,7 +387,7 @@ class Transfercode(object):
         Extra args are passed to Transfercode.transfer."""
         if dry_run:
             return self
-        if not self.needs_transcode():
+        if not self.needs_transcode:
             return self
         if not (force or self.needs_update()):
             return self
@@ -377,7 +409,7 @@ The only addition is that the source file is deleted after transfer."""
         """This would be redundant."""
         return self
 
-    def needs_update(self):
+    def needs_update(self, *args, **kwargs):
         return True
 
 def is_subpath(path, parent):
@@ -614,7 +646,7 @@ def main(source_directory, destination_directory,
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
-    need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode(), transfercodes))
+    need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode, transfercodes))
 
     if need_at_least_one_transcode:
         # Only emit encoder-related log messages if transcoding is required
@@ -641,20 +673,20 @@ def main(source_directory, destination_directory,
             logging.debug("Running in sequential mode.")
             for tfc in transfercodes:
                 try:
-                    fname = tfc.src
-                    tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
-                                                   rsync=rsync_path, force=force, dry_run=dry_run)
-                except Exception as exc:
-                    logging.exception("Exception while transcoding %s: %s", fname, exc)
-                    failed_files.append(fname)
-                    continue
-                try:
+                    if tfc.needs_update(loglevel=logging.INFO):
+                        fname = tfc.src
+                        try:
+                            tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
+                                                           rsync=rsync_path, force=force, dry_run=dry_run)
+                        except Exception as exc:
+                            logging.exception("Exception while transcoding %s: %s", fname, exc)
+                            failed_files.append(fname)
+                            continue
                     tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                 except Exception as exc:
                     logging.exception("Exception while transferring %s: %s", fname, exc)
                     failed_files.append(fname)
                     continue
-
         else:
             assert not dry_run, "Parallel dry run makes no sense"
             logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
@@ -663,12 +695,13 @@ def main(source_directory, destination_directory,
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
-                    f = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir,
-                                             ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
+                    def transcode_to_tempdir_if_needs_update(tfc):
+                        if tfc.needs_update(loglevel=logging.INFO):
+                            return tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
-                    transfercodes = sorted(transfercodes, key = Transfercode.needs_transcode)
-                    transcoded = transcode_pool.imap_unordered(f, transfercodes)
+                    transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
+                    transcoded = transcode_pool.imap_unordered(transcode_to_tempdir_if_needs_update, transfercodes)
                 else:
                     # Skip the transcoding step if nothing needs transcoding
                     transcoded = transfercodes
