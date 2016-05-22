@@ -28,8 +28,8 @@ except ImportError:
 try:
     from tqdm import tqdm
 except ImportError:
-    def tqdm(it):
-        return it
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 
 # Support checksums for MP3 and M4A/MP4
 EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
