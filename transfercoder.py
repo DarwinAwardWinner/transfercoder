@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 
-from warnings import warn
-try:
-    import plac
-except ImportError, e:
-    warn("You must install the plac module to use this script.")
-    raise e
-
-import UserDict
+import plac
 import hashlib
 import logging
 import multiprocessing
@@ -19,13 +12,18 @@ import shutil
 import sys
 import tempfile
 
-from itertools import *
+from six.moves import map
 from multiprocessing.pool import ThreadPool
 from mutagen import File as MusicFile
 from mutagen.aac import AACError
 from mutagen.easyid3 import EasyID3
 from mutagen.easymp4 import EasyMP4Tags
 from subprocess import call, check_call
+
+try:
+    from collections import MutableMapping
+except ImportError:
+    from UserDict import DictMixin as MutableMapping
 
 # Support checksums for MP3 and M4A/MP4
 EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
@@ -65,7 +63,7 @@ def del_hidden(paths):
 This modifies its argument *in place*, so it can be used with
 os.walk."""
 
-    hidden = (i for i in reversed(xrange(len(paths)))
+    hidden = (i for i in reversed(range(len(paths)))
               if paths[i][0] == ".")
     for i in hidden:
         del paths[i]
@@ -78,7 +76,7 @@ def splitext_afterdot(path):
         ext = ext[1:]
     return (base, ext)
 
-class AudioFile(UserDict.DictMixin):
+class AudioFile(MutableMapping):
     """A simple class just for tag editing.
 
     No internal mutagen tags are exposed, or filenames or anything. So
@@ -105,12 +103,12 @@ class AudioFile(UserDict.DictMixin):
         self.blacklist = [ re.compile("^~") ] + blacklist
     def __getitem__(self, item):
         if self.blacklisted(item):
-            warn("%s is a blacklisted key." % item)
+            logging.debug("Attempted to get blacklisted key: %s." % repr(item))
         else:
             return self.data.__getitem__(item)
     def __setitem__(self, item, value):
         if self.blacklisted(item):
-            warn("%s is a blacklisted key." % item)
+            logging.debug("Attempted to set blacklisted key: %s." % repr(item))
         else:
             try:
                 return self.data.__setitem__(item, value)
@@ -119,9 +117,14 @@ class AudioFile(UserDict.DictMixin):
                               item, type(self.data))
     def __delitem__(self, item):
         if self.blacklisted(item):
-            warn("%s is a blacklisted key." % item)
+            logging.debug("Attempted to del blacklisted key: %s." % repr(item))
         else:
             return self.data.__delitem__(item)
+    def __len__(self):
+        return self.data.__len__()
+    def __iter__(self):
+        return self.data.__iter__()
+
     def blacklisted(self, item):
         """Return True if tag is blacklisted.
 
@@ -205,7 +208,7 @@ class Transfercode(object):
             m.update(open(self.src, 'rb').read())
             # We also hash the encoder options, since if those change,
             # we need to re-transcode.
-            m.update(self.eopts or "")
+            m.update((self.eopts or "").encode('utf-8'))
             self._src_checksum = m.hexdigest()[:32]
         return self._src_checksum
 
@@ -472,7 +475,7 @@ class DestinationFinder(object):
 
     def walk_target_files(self):
         """An iterator over all files that are to be created in the destination directory."""
-        return imap(self.find_dest, self.walk_source_files())
+        return map(self.find_dest, self.walk_source_files())
 
     def walk_source_target_pairs(self):
         """iter(zip(self.walk_source_files(), self.walk_target_files()))'.
@@ -648,7 +651,7 @@ def main(source_directory, destination_directory,
     logging.info("Searching for source files to transfer...")
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
     logging.info("Found %s files to check", len(transfercodes))
-    need_at_least_one_transcode = any(imap(lambda x: (force or x.needs_update()) and x.needs_transcode, transfercodes))
+    need_at_least_one_transcode = any(map(lambda x: (force or x.needs_update()) and x.needs_transcode, transfercodes))
 
     if need_at_least_one_transcode:
         # Only emit encoder-related log messages if transcoding is required
