@@ -661,7 +661,7 @@ def main(source_directory, destination_directory,
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
     # logging.info("Found %s files to check", len(transfercodes))
     logging.info("Checking for updated files...")
-    it = tqdm(transfercodes, desc="Checking for updated files")
+    it = tqdm(transfercodes, desc="Checking for updated files", smoothing=0.1)
     need_at_least_one_transcode = any(map(lambda x: (force or x.needs_update()) and x.needs_transcode, it))
     # The call to list() ensures that the progress bar goes to
     # completion and also pre-caches all the checksums, which will
@@ -697,7 +697,7 @@ def main(source_directory, destination_directory,
                 desc = "Transcoding & copying"
             else:
                 desc = "Copying"
-            for tfc in tqdm(transfercodes, desc="Transcoding & Copying"):
+            for tfc in tqdm(transfercodes, desc="Transcoding & Copying", smoothing=0.1):
                 try:
                     if tfc.needs_update(loglevel=logging.INFO):
                         fname = tfc.src
