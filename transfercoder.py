@@ -12,12 +12,13 @@ import shutil
 import sys
 import tempfile
 
-from six.moves import map
+from ffmpy import FF, FFRuntimeError
 from multiprocessing.pool import ThreadPool
 from mutagen import File as MusicFile
 from mutagen.aac import AACError
 from mutagen.easyid3 import EasyID3
 from mutagen.easymp4 import EasyMP4Tags
+from six.moves import map
 from subprocess import call, check_call
 
 try:
@@ -305,11 +306,14 @@ class Transfercode(object):
         if self.eopts:
             encoder_opts = shlex.split(self.eopts)
 
-        command = ["ffmpeg", "-y", "-i" , self.src, "-vn"] + \
-                  encoder_opts + [ self.dest]
-        logging.debug("Transcode command: %s", repr(command))
-        check_call(command, stdout=open(os.devnull, "w"),
-                   stderr=open(os.devnull, "w"))
+        ff = FF(
+            executable = ffmpeg,
+            global_options = '-y',
+            inputs = { self.src: None },
+            outputs = { self.dest: ['-vn'] + encoder_opts },
+        )
+        logging.debug("Transcode command: %s", repr(ff.cmd_str))
+        ff.run(verbose=False)
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
@@ -596,7 +600,7 @@ def plac_call_main():
     transcode_formats=("A comma-separated list of input file extensions that must be transcoded. ffmpeg must be compiled with support for decoding these formats.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
     target_format=("All input transcode formats will be transcoded to this output format. ffmpeg must be compiled with support for encoding this format.", "option", "o", str),
     ffmpeg_path=("The path to ffmpeg. Only required if ffmpeg is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
-    encoder_options=("Extra encoder options to pass to ffmpeg.", "option", "E", str, None, "'OPTIONS'"),
+    encoder_options=("Extra encoder options to pass to ffmpeg. Passing this will override the defaults, and no sanity checking is performed.", "option", "E", str, None, "'OPTIONS'"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
     dry_run=("Don't actually modify anything.", "flag", "n"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
@@ -699,6 +703,11 @@ def main(source_directory, destination_directory,
                         try:
                             tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
                                                            rsync=rsync_path, force=force, dry_run=dry_run)
+                        except FFRuntimeError as exc:
+                            logging.error("Error running ffmpeg on %s:\n%s",
+                                          fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
+                            failed_files.append(fname)
+                            continue
                         except Exception as exc:
                             logging.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
@@ -718,15 +727,11 @@ def main(source_directory, destination_directory,
                 if need_at_least_one_transcode:
                     desc = "Transcoding & copying"
                     logging.debug('Setting up transcoding ThreadPool')
-                    def transcode_to_tempdir_if_needs_update(tfc):
-                        if force or tfc.needs_update(loglevel=logging.INFO):
-                            return tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
-                        else:
-                            return tfc
+                    tfunc = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
-                    transcoded = transcode_pool.imap_unordered(transcode_to_tempdir_if_needs_update, transfercodes)
+                    transcoded = transcode_pool.imap_unordered(tfunc, transfercodes)
                 else:
                     desc = "Copying"
                     logging.debug('Skipping the transcoding step because no files need to be transcoded')
@@ -740,6 +745,11 @@ def main(source_directory, destination_directory,
                         fname = tfc.src
                         try:
                             raise orig_exc
+                        except FFRuntimeError as exc:
+                            logging.error("Error running ffmpeg on %s:\n%s",
+                                          fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
+                            failed_files.append(fname)
+                            continue
                         except Exception as exc:
                             logging.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
