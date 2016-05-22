@@ -31,6 +31,15 @@ except ImportError:
     def tqdm(iterable, *args, **kwargs):
         return iterable
 
+# Set up logging
+logFormatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.handlers = []
+logger.addHandler(logging.StreamHandler())
+for handler in logger.handlers:
+    handler.setFormatter(logFormatter)
+
 # Support checksums for MP3 and M4A/MP4
 EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
                         'TRANSFERCODER_SRC_CHECKSUM')
@@ -47,7 +56,7 @@ def call_silent(cmd, *args, **kwargs):
     """Like subprocess.call, but redirects stdin/out/err to null device."""
     nullsrc = open(os.devnull, "r")
     nullsink = open(os.devnull, "w")
-    logging.debug("Calling command: %s", repr(cmd))
+    logger.debug("Calling command: %s", repr(cmd))
     return call(cmd, *args, stdin=nullsrc, stdout=nullsink, stderr=nullsink, **kwargs)
 
 def test_executable(exe, options=("--help",)):
@@ -109,21 +118,21 @@ class AudioFile(MutableMapping):
         self.blacklist = [ re.compile("^~") ] + blacklist
     def __getitem__(self, item):
         if self.blacklisted(item):
-            logging.debug("Attempted to get blacklisted key: %s." % repr(item))
+            logger.debug("Attempted to get blacklisted key: %s." % repr(item))
         else:
             return self.data.__getitem__(item)
     def __setitem__(self, item, value):
         if self.blacklisted(item):
-            logging.debug("Attempted to set blacklisted key: %s." % repr(item))
+            logger.debug("Attempted to set blacklisted key: %s." % repr(item))
         else:
             try:
                 return self.data.__setitem__(item, value)
             except KeyError:
-                logging.debug("Skipping unsupported tag %s for file type %s",
-                              item, type(self.data))
+                logger.debug("Skipping unsupported tag %s for file type %s",
+                             item, type(self.data))
     def __delitem__(self, item):
         if self.blacklisted(item):
-            logging.debug("Attempted to del blacklisted key: %s." % repr(item))
+            logger.debug("Attempted to del blacklisted key: %s." % repr(item))
         else:
             return self.data.__delitem__(item)
     def __len__(self):
@@ -150,9 +159,9 @@ class AudioFile(MutableMapping):
 # info and replaygain info. This will not be transferred from source,
 # nor deleted from destination.
 blacklist_regexes = [ re.compile(s) for s in (
-        'encoded',
-        'replaygain',
-        ) ]
+    'encoded',
+    'replaygain',
+) ]
 
 def copy_tags (src, dest):
     """Replace tags of dest file with those of src.
@@ -164,18 +173,18 @@ carry across formats."""
         m_dest = AudioFile(dest, blacklist = m_src.blacklist, easy=True)
         m_dest.clear()
         m_dest.update(m_src)
-        logging.debug("Added tags to dest file:\n%s",
-                      "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
+        logger.debug("Added tags to dest file:\n%s",
+                     "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
         m_dest.write()
     except AACError:
-        logging.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
+        logger.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
 def read_checksum_tag(fname):
     try:
         afile = AudioFile(fname, easy=True)
         return afile['transfercoder_src_checksum'][0]
     except Exception:
-        logging.debug("Could not read checksum tag from %s", repr(fname))
+        logger.debug("Could not read checksum tag from %s", repr(fname))
         return None
 
 def write_checksum_tag(fname, cksum):
@@ -184,7 +193,7 @@ def write_checksum_tag(fname, cksum):
         afile['transfercoder_src_checksum'] = cksum
         afile.write()
     except Exception:
-        logging.warn("Could not write checksum tag to %s", repr(fname))
+        logger.warn("Could not write checksum tag to %s", repr(fname))
 
 class Transfercode(object):
     def __init__(self, src, dest, eopts=None, use_checksum=True):
@@ -220,7 +229,7 @@ class Transfercode(object):
 
     def saved_checksum(self):
         if self._saved_checksum is None:
-            logging.debug("Reading checksum from %s", repr(self.dest))
+            logger.debug("Reading checksum from %s", repr(self.dest))
             self._saved_checksum = read_checksum_tag(self.dest)
             if self._saved_checksum is None:
                 # Empty string is still false, but is used to
@@ -237,7 +246,7 @@ class Transfercode(object):
     def save_checksum(self):
         # Clear the cached checksum from the dest file, if any
         self._saved_checksum = None
-        logging.info("Saving checksum to destination file %s", repr(self.dest))
+        logger.info("Saving checksum to destination file %s", repr(self.dest))
         write_checksum_tag(self.dest, self.source_checksum())
 
     def needs_update(self, loglevel=logging.DEBUG):
@@ -260,41 +269,41 @@ class Transfercode(object):
         """
         verb = "transcode" if self.needs_transcode else "copy"
         if not os.path.exists(self.dest):
-            logging.log(loglevel, "Need to %s file %s to %s because the destination file does not exist yet",
-                        verb, repr(self.src), repr(self.dest))
+            logger.log(loglevel, "Need to %s file %s to %s because the destination file does not exist yet",
+                       verb, repr(self.src), repr(self.dest))
             return True
         # Only use checksums for transcodable files
         if self.needs_transcode and self.use_checksum:
             current = self.checksum_current()
             if current is None:
-                logging.log(loglevel,
-                            "Expected checksum not found in tags for destination file %s. Falling back to modification time checking.",
-                            self.dest)
+                logger.log(loglevel,
+                           "Expected checksum not found in tags for destination file %s. Falling back to modification time checking.",
+                           self.dest)
             else:
-                logging.debug("Using checksum to determine update status for %s", repr(self))
+                logger.debug("Using checksum to determine update status for %s", repr(self))
                 if current:
-                    logging.debug("Don't need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
-                                  repr(self.src), repr(self.dest))
+                    logger.debug("Don't need to transcode %s to %s because the destination's checksum tag matches the source's checksum.",
+                                 repr(self.src), repr(self.dest))
                 else:
-                    logging.log(loglevel, "Need to transcode %s to %s because the destination's checksum tag does not match the source's checksum.",
-                                repr(self.src), repr(self.dest))
+                    logger.log(loglevel, "Need to transcode %s to %s because the destination's checksum tag does not match the source's checksum.",
+                               repr(self.src), repr(self.dest))
                 return not current
-        # If we haven't returned by now, we need to check based on the modtimes
-        logging.debug("Using modification times to determine update status for %s", repr(self))
+            # If we haven't returned by now, we need to check based on the modtimes
+        logger.debug("Using modification times to determine update status for %s", repr(self))
         src_mtime = os.path.getmtime(self.src)
         dest_mtime = os.path.getmtime(self.dest)
         src_newer = src_mtime > dest_mtime
         if src_newer:
-            logging.log(loglevel, "Need to %s file %s to %s because the source file is newer than the destination file",
-                        verb, repr(self.src), repr(self.dest))
+            logger.log(loglevel, "Need to %s file %s to %s because the source file is newer than the destination file",
+                       verb, repr(self.src), repr(self.dest))
         else:
-            logging.debug("Don't to %s file %s to %s because the destination file is newer than the source file",
-                          verb, repr(self.src), repr(self.dest))
+            logger.debug("Don't to %s file %s to %s because the destination file is newer than the source file",
+                         verb, repr(self.src), repr(self.dest))
         return src_newer
 
     def transcode(self, ffmpeg="ffmpeg", dry_run=False):
-        logging.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
-        logging.debug("Transcoding: %s", repr(self))
+        logger.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
+        logger.debug("Transcoding: %s", repr(self))
         if dry_run:
             return
         # This has no effect if successful, but will throw an error
@@ -312,13 +321,13 @@ class Transfercode(object):
             inputs = { self.src: None },
             outputs = { self.dest: ['-vn'] + encoder_opts },
         )
-        logging.debug("Transcode command: %s", repr(ff.cmd_str))
+        logger.debug("Transcode command: %s", repr(ff.cmd_str))
         ff.run(verbose=False)
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
         if self.use_checksum:
-            logging.debug("Saving checksum to dest file %s: %s", repr(self.dest), self.source_checksum())
+            logger.debug("Saving checksum to dest file %s: %s", repr(self.dest), self.source_checksum())
             write_checksum_tag(self.dest, self.source_checksum())
         try:
             shutil.copymode(self.src, self.dest)
@@ -331,7 +340,7 @@ class Transfercode(object):
 
         Optional arg rsync allows rsync to be used, which may be more
         efficient."""
-        logging.info("Copying: %s -> %s", self.src, self.dest)
+        logger.info("Copying: %s -> %s", self.src, self.dest)
         if dry_run:
             return
         success = False
@@ -379,12 +388,12 @@ class Transfercode(object):
                     self.transcode(ffmpeg=ffmpeg, dry_run=dry_run)
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
-        # If the destination is missing its checksum, we still need to
-        # add it even though we're not updating the file.
+                # If the destination is missing its checksum, we still need to
+                # add it even though we're not updating the file.
         elif not dry_run and self.use_checksum and self.needs_transcode and not self.checksum_current():
             self.save_checksum()
         else:
-            logging.debug("Skipping: %s -> %s", self.src, self.dest)
+            logger.debug("Skipping: %s -> %s", self.src, self.dest)
 
     # TODO: implement encoder options
     def transcode_to_tempdir(self, tempdir=None, force=False, dry_run=False, *args, **kwargs):
@@ -471,7 +480,7 @@ class DestinationFinder(object):
             if not is_subpath(src, self.src_dir):
                 raise ValueError("Absolute path must fall within src_dir")
             src = os.path.relpath(src, self.src_dir)
-        base, ext = splitext_afterdot(src)
+            base, ext = splitext_afterdot(src)
         if ext in self.src_exts:
             dest_relpath = base + self.dest_ext
         else:
@@ -513,7 +522,7 @@ def create_dirs(dirs):
     """Ensure that a list of directories all exist"""
     for d in dirs:
         if not os.path.isdir(d):
-            logging.debug("Creating directory: %s", d)
+            logger.debug("Creating directory: %s", d)
             os.makedirs(d)
 
 class ParallelException(Exception):
@@ -611,7 +620,7 @@ def plac_call_main():
     jobs=("Number of transcoding jobs to run in parallel. Transfers will always run sequentially. The default is the number of cores available on the system. A value of 1 will run transcoding in parallel with copying. Use -j0 to force full sequential operation.", "option", "j", nonneg_int),
     quiet=("Do not print informational messages.", "flag", "q"),
     verbose=("Print debug messages that are probably only useful if something is going wrong.", "flag", "v"),
-    )
+)
 def main(source_directory, destination_directory,
          transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
          target_format="ogg",
@@ -634,33 +643,33 @@ def main(source_directory, destination_directory,
 
     """
     if quiet:
-        logging.basicConfig(level=logging.WARN)
+        logger.setLevel(level=logging.WARN)
     elif verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logger.setLevel(level=logging.DEBUG)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logger.setLevel(level=logging.INFO)
 
     if target_format in transcode_formats:
         argument_error('The target format must not be one of the transcode formats')
 
     if dry_run:
-        logging.info("Running in --dry_run mode. Nothing actually happens.")
+        logger.info("Running in --dry_run mode. Nothing actually happens.")
         # No point doing nothing in parallel
         if jobs > 0:
-            logging.debug("Switching to sequential mode because --dry_run was specified.")
+            logger.debug("Switching to sequential mode because --dry_run was specified.")
             jobs = 0
 
-    logging.debug("Using %s to determine whether updates are needed.",
-                  "file modification times" if no_checksum_tags else "checksum tags")
+    logger.debug("Using %s to determine whether updates are needed.",
+                 "file modification times" if no_checksum_tags else "checksum tags")
 
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
-    logging.info("Searching for source files to transfer...")
+    logger.info("Searching for source files to transfer...")
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
-    # logging.info("Found %s files to check", len(transfercodes))
-    logging.info("Checking for updated files...")
+    # logger.info("Found %s files to check", len(transfercodes))
+    logger.info("Checking for updated files...")
     it = tqdm(transfercodes, desc="Checking for updated files", smoothing=0.1)
     need_at_least_one_transcode = any(map(lambda x: (force or x.needs_update()) and x.needs_transcode, it))
     # The call to list() ensures that the progress bar goes to
@@ -673,26 +682,26 @@ def main(source_directory, destination_directory,
         if encoder_options is None:
             try:
                 encoder_options = default_eopts[target_format]
-                logging.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
+                logger.debug("Using default encoder options for %s format: %s", target_format, repr(encoder_options))
             except KeyError:
-                logging.debug("Using default encoder options for %s format", target_format)
+                logger.debug("Using default encoder options for %s format", target_format)
     else:
         # Only transcoding happens in parallel, not transferring, so
         # disable parallel if no transcoding is required
         if jobs > 0:
-            logging.debug("Switching to sequential mode because no transcodes are required.")
+            logger.debug("Switching to sequential mode because no transcodes are required.")
             jobs = 0
 
     finished = False
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
     canceled = False
-    logging.info("Beginning transfer")
+    logger.info("Beginning transfer")
     try:
         if not dry_run:
             create_dirs(set(x.dest_dir for x in transfercodes))
-        failed_files = []
+            failed_files = []
         if jobs == 0:
-            logging.debug("Running in sequential mode.")
+            logger.debug("Running in sequential mode.")
             if need_at_least_one_transcode:
                 desc = "Transcoding & copying"
             else:
@@ -705,29 +714,29 @@ def main(source_directory, destination_directory,
                             tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
                                                            rsync=rsync_path, force=force, dry_run=dry_run)
                         except FFRuntimeError as exc:
-                            logging.error("Error running ffmpeg on %s:\n%s",
-                                          fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
+                            logger.error("Error running ffmpeg on %s:\n%s",
+                                         fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
                             failed_files.append(fname)
                             continue
                         except Exception as exc:
-                            logging.exception("Exception while transcoding %s: %s", fname, exc)
+                            logger.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
                             continue
-                    tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
+                        tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                 except Exception as exc:
-                    logging.exception("Exception while transferring %s: %s", fname, exc)
+                    logger.exception("Exception while transferring %s: %s", fname, exc)
                     failed_files.append(fname)
                     continue
         else:
             assert not dry_run, "Parallel dry run makes no sense"
-            logging.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
+            logger.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
             transcode_pool = None
             last_file = None
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
                     desc = "Transcoding & copying"
-                    logging.debug('Setting up transcoding ThreadPool')
+                    logger.debug('Setting up transcoding ThreadPool')
                     tfunc = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
@@ -735,9 +744,9 @@ def main(source_directory, destination_directory,
                     transcoded = transcode_pool.imap_unordered(tfunc, transfercodes)
                 else:
                     desc = "Copying"
-                    logging.debug('Skipping the transcoding step because no files need to be transcoded')
+                    logger.debug('Skipping the transcoding step because no files need to be transcoded')
                     transcoded = transfercodes
-                # Transfer step (not parallel, since it is disk-bound)
+                    # Transfer step (not parallel, since it is disk-bound)
                 for tfc in tqdm(transcoded, desc=desc, total=len(transfercodes)):
                     if isinstance(tfc, ParallelException):
                         par_exc = tfc
@@ -747,70 +756,70 @@ def main(source_directory, destination_directory,
                         try:
                             raise orig_exc
                         except FFRuntimeError as exc:
-                            logging.error("Error running ffmpeg on %s:\n%s",
-                                          fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
+                            logger.error("Error running ffmpeg on %s:\n%s",
+                                         fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
                             failed_files.append(fname)
                             continue
                         except Exception as exc:
-                            logging.exception("Exception while transcoding %s: %s", fname, exc)
+                            logger.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
                             continue
-                    last_file = tfc.dest
+                        last_file = tfc.dest
                     try:
                         tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                     except Exception as exc:
-                        logging.exception("Exception while transferring %s: %s", fname, exc)
+                        logger.exception("Exception while transferring %s: %s", fname, exc)
                         failed_files.append(fname)
                         continue
-                last_file = None
+                    last_file = None
             except KeyboardInterrupt:
-                logging.error("Canceled.")
+                logger.error("Canceled.")
                 delete = False
                 if transcode_pool is not None:
-                    logging.debug("Terminating transcode process pool")
+                    logger.debug("Terminating transcode process pool")
                     transcode_pool.terminate()
                     transcode_pool = None
                 raise
             finally:
                 if transcode_pool is not None:
-                    logging.debug("Closing transcode process pool")
+                    logger.debug("Closing transcode process pool")
                     transcode_pool.close()
                 if last_file and os.path.exists(last_file):
-                    logging.info("Cleaning incomplete transfer: %s", last_file)
+                    logger.info("Cleaning incomplete transfer: %s", last_file)
                     os.remove(last_file)
         if delete:
             for f in df.walk_extra_dest_files():
-                logging.info("Deleting: %s", f)
+                logger.info("Deleting: %s", f)
                 if not dry_run:
                     os.remove(f)
         if work_dir and os.path.exists(work_dir):
-            logging.debug("Deleting temporary directory")
+            logger.debug("Deleting temporary directory")
             shutil.rmtree(work_dir, ignore_errors=True)
-        finished = True
+            finished = True
     except KeyboardInterrupt:
         canceled = True
         finished = False
     finally:
         if work_dir and os.path.exists(work_dir):
-            logging.debug("Deleting temporary directory")
+            logger.debug("Deleting temporary directory")
             shutil.rmtree(work_dir, ignore_errors=True)
         if failed_files:
-            logging.error("The following %s files were not processed successfully:\n%s",
-                          len(failed_files),
-                          "\n".join("\t" + f for f in failed_files))
+            logger.error("The following %s files were not processed successfully:\n%s",
+                         len(failed_files),
+                         "\n".join("\t" + f for f in failed_files))
             if finished:
-                logging.info("Finished with some errors (see above).")
+                logger.info("Finished with some errors (see above).")
             elif canceled:
-                logging.info("Exited after being cancelled, with some errors (see above).")
+                logger.info("Exited after being cancelled, with some errors (see above).")
             else:
-                logging.info("Exited with some errors (see above).")
+                logger.info("Exited with some errors (see above).")
         else:
             if finished:
-                logging.info("Finished with no errors.")
+                logger.info("Finished with no errors.")
             elif canceled:
-                logging.info("Exited after being canceled, with no errors so far.")
+                logger.info("Exited after being canceled, with no errors so far.")
         if dry_run:
-            logging.info("Ran in --dry_run mode. Nothing actually happened.")
+            logger.info("Ran in --dry_run mode. Nothing actually happened.")
 
 if __name__ == "__main__":
     plac_call_main()
