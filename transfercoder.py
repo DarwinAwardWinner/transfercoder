@@ -701,8 +701,10 @@ def main(source_directory, destination_directory,
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
                     def transcode_to_tempdir_if_needs_update(tfc):
-                        if tfc.needs_update(loglevel=logging.INFO):
+                        if force or tfc.needs_update(loglevel=logging.INFO):
                             return tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
+                        else:
+                            return tfc
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
