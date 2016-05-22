@@ -661,11 +661,12 @@ def main(source_directory, destination_directory,
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
     # logging.info("Found %s files to check", len(transfercodes))
     logging.info("Checking for updated files...")
+    it = tqdm(transfercodes, desc="Checking for updated files")
+    need_at_least_one_transcode = any(map(lambda x: (force or x.needs_update()) and x.needs_transcode, it))
     # The call to list() ensures that the progress bar goes to
     # completion and also pre-caches all the checksums, which will
     # have to be calculated anyway.
-    need_at_least_one_transcode = any(list(map(lambda x: (force or x.needs_update()) and x.needs_transcode,
-                                               tqdm(transfercodes, desc="Checking for updated files"))))
+    list(it)
 
     if need_at_least_one_transcode:
         # Only emit encoder-related log messages if transcoding is required
