@@ -670,6 +670,7 @@ def main(source_directory, destination_directory,
 
     finished = False
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
+    canceled = False
     try:
         if not dry_run:
             create_dirs(set(x.dest_dir for x in transfercodes))
@@ -757,6 +758,9 @@ def main(source_directory, destination_directory,
             logging.debug("Deleting temporary directory")
             shutil.rmtree(work_dir, ignore_errors=True)
         finished = True
+    except KeyboardInterrupt:
+        canceled = True
+        finished = False
     finally:
         if work_dir and os.path.exists(work_dir):
             logging.debug("Deleting temporary directory")
@@ -767,12 +771,14 @@ def main(source_directory, destination_directory,
                           "\n".join("\t" + f for f in failed_files))
             if finished:
                 logging.info("Finished with some errors (see above).")
-            else:
+            elif canceled:
                 logging.info("Exited after being cancelled, with some errors (see above).")
+            else:
+                logging.info("Exited with some errors (see above).")
         else:
             if finished:
                 logging.info("Finished with no errors.")
-            else:
+            elif canceled:
                 logging.info("Exited after being canceled, with no errors so far.")
         if dry_run:
             logging.info("Ran in --dry_run mode. Nothing actually happened.")
