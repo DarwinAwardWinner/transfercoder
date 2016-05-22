@@ -41,7 +41,7 @@ See the help for more options. Or ask me.
 
 # Prerequisites
 
-* Python with the plac and mutagen modules installed
+* Python with the plac, mutagen, six, ffmpy, and tqdm modules installed
 * ffmpeg - For transcoding (Make sure ffmpeg is complied with encode
   and/or decode support for the formats you require)
 * Rsync (optional) - For faster copying of small changes
