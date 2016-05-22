@@ -24,6 +24,11 @@ try:
     from collections import MutableMapping
 except ImportError:
     from UserDict import DictMixin as MutableMapping
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(it):
+        return it
 
 # Support checksums for MP3 and M4A/MP4
 EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
@@ -650,8 +655,13 @@ def main(source_directory, destination_directory,
                            transcode_formats, target_format, include_hidden)
     logging.info("Searching for source files to transfer...")
     transfercodes = list(df.transfercodes(eopts=encoder_options, use_checksum=not no_checksum_tags))
-    logging.info("Found %s files to check", len(transfercodes))
-    need_at_least_one_transcode = any(map(lambda x: (force or x.needs_update()) and x.needs_transcode, transfercodes))
+    # logging.info("Found %s files to check", len(transfercodes))
+    logging.info("Checking for updated files...")
+    # The call to list() ensures that the progress bar goes to
+    # completion and also pre-caches all the checksums, which will
+    # have to be calculated anyway.
+    need_at_least_one_transcode = any(list(map(lambda x: (force or x.needs_update()) and x.needs_transcode,
+                                               tqdm(transfercodes, desc="Checking for updated files"))))
 
     if need_at_least_one_transcode:
         # Only emit encoder-related log messages if transcoding is required
@@ -671,13 +681,18 @@ def main(source_directory, destination_directory,
     finished = False
     work_dir = tempfile.mkdtemp(dir=temp_dir, prefix="transfercode_")
     canceled = False
+    logging.info("Beginning transfer")
     try:
         if not dry_run:
             create_dirs(set(x.dest_dir for x in transfercodes))
         failed_files = []
         if jobs == 0:
             logging.debug("Running in sequential mode.")
-            for tfc in transfercodes:
+            if need_at_least_one_transcode:
+                desc = "Transcoding & copying"
+            else:
+                desc = "Copying"
+            for tfc in tqdm(transfercodes, desc="Transcoding & Copying"):
                 try:
                     if tfc.needs_update(loglevel=logging.INFO):
                         fname = tfc.src
@@ -701,6 +716,8 @@ def main(source_directory, destination_directory,
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
+                    desc = "Transcoding & copying"
+                    logging.debug('Setting up transcoding ThreadPool')
                     def transcode_to_tempdir_if_needs_update(tfc):
                         if force or tfc.needs_update(loglevel=logging.INFO):
                             return tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
@@ -711,10 +728,11 @@ def main(source_directory, destination_directory,
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
                     transcoded = transcode_pool.imap_unordered(transcode_to_tempdir_if_needs_update, transfercodes)
                 else:
-                    # Skip the transcoding step if nothing needs transcoding
+                    desc = "Copying"
+                    logging.debug('Skipping the transcoding step because no files need to be transcoded')
                     transcoded = transfercodes
                 # Transfer step (not parallel, since it is disk-bound)
-                for tfc in transcoded:
+                for tfc in tqdm(transcoded, desc=desc, total=len(transfercodes)):
                     if isinstance(tfc, ParallelException):
                         par_exc = tfc
                         orig_exc = par_exc.exc
