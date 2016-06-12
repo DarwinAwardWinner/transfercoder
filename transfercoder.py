@@ -136,9 +136,9 @@ class AudioFile(MutableMapping):
         else:
             return self.data.__delitem__(item)
     def __len__(self):
-        return self.data.__len__()
+        return len(self.keys())
     def __iter__(self):
-        return self.data.__iter__()
+        return iter(self.keys())
 
     def blacklisted(self, item):
         """Return True if tag is blacklisted.
@@ -172,6 +172,8 @@ carry across formats."""
         m_src = AudioFile(src, blacklist = blacklist_regexes, easy=True)
         m_dest = AudioFile(dest, blacklist = m_src.blacklist, easy=True)
         m_dest.clear()
+        logging.debug("Adding tags from source file:\n%s",
+                      "\n".join("%s: %s" % (k, repr(m_src[k])) for k in sorted(m_src.keys())))
         m_dest.update(m_src)
         logger.debug("Added tags to dest file:\n%s",
                      "\n".join("%s: %s" % (k, repr(m_dest[k])) for k in sorted(m_dest.keys())))
