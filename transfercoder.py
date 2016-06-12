@@ -677,7 +677,8 @@ def main(source_directory, destination_directory,
     # The call to list() ensures that the progress bar goes to
     # completion and also pre-caches all the checksums, which will
     # have to be calculated anyway.
-    list(it)
+    x = list(it)
+    del x
 
     if need_at_least_one_transcode:
         # Only emit encoder-related log messages if transcoding is required
