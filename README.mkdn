@@ -31,23 +31,42 @@ don't want this, then use the `--no-checksum-tags` option, and it will
 avoid adding these tags and instead rely on the file time stamps,
 transcoding a file any time the source file is newer.
 
+# Installation
+
+Transfercoder is now structured as a Python package, so you can
+install it using pip:
+
+    pip install https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip
+
+This should install Transfercoder and all the other Python packages
+that it depends on. After this, you should now have a command called
+`transfercoder` in your `$PATH`.
+
 # Usage
 
-Put the script in your path. Install the prereqs. Then, use as so:
+Once you have installed Transfercoder, you can use it like this:
 
-    $ transfercoder /home/yourname/Music /media/musicplayer/music
+    transfercoder /home/yourname/Music /media/musicplayer/music
 
-See the help for more options. Or ask me.
+This command will copy your music from the first path to the second
+while transcoding lossless formats like FLAC in the source path to Ogg
+Vorbis files in the destination using ffmpeg.
+
+See the help (`transfercoder --help`) for more options.
 
 # Prerequisites
 
-* Python with the plac, mutagen, six, ffmpy, and tqdm modules installed
-* ffmpeg - For transcoding (Make sure ffmpeg is complied with encode
-  and/or decode support for the formats you require)
+* Python with the plac, mutagen, six, ffmpy, and tqdm modules
+  installed. (These packages should get installed automatically if you
+  use pip to install Transfercoder.) The script should work with both
+  Python 2 and 3, but as of version 3.2 it is primarily tested on
+  Python 3.
+* ffmpeg - For transcoding (Make sure ffmpeg is complied with support
+  for encoding and/or decoding the formats you require)
 * Rsync (optional) - For faster copying of small changes
 
-As indicated, rsync is an optional dependency. It is primarily be
-useful if you changed only file tags on files that do not require
+As indicated, rsync is an optional dependency. It is primarily useful
+if you changed only file tags on files that do not require
 transcoding, in which case there will only be a small difference to
 transfer.
 
@@ -60,10 +79,10 @@ transfer.
   relative or absolute paths, and the device may expect them in odd
   formats. You'll need to come up with your own solution here, or just
   use a media player that handles them.
-* Replaygain tags are intentionally not copied. This is because in my
-  experience, different formats of the same song need different
-  adjustments, even though in theory they should have identical
-  volumes. So just add replaygain to your transcoded library on your
-  device after syncing. If only there was a
-  [tool](https://github.com/DarwinAwardWinner/rganalysis) for that
-  too.
+* Transfercoder intentionally avoids copying replaygain tags when
+  transcoding. This is because in my experience, different formats of
+  the same song need different replaygain adjustments, even though in
+  theory they should have identical volumes. Instead, just add
+  replaygain tags to your transcoded library on your device after
+  syncing. I have also written a tool for that called
+  [eganalysis](https://github.com/DarwinAwardWinner/rganalysis).
