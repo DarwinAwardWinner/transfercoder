@@ -19,7 +19,7 @@ from subprocess import call, check_call
 
 try:
     # Python 3
-    from collections import MutableMapping
+    from collections.abc import MutableMapping
 except ImportError:
     # Python 2
     from UserDict import DictMixin as MutableMapping
@@ -302,7 +302,7 @@ class Transfercode(object):
             inputs = { self.src: None },
             outputs = { self.dest: ['-vn'] + encoder_opts },
         )
-        logger.debug("Transcode command: %s", repr(ff.cmd_str))
+        logger.debug("Transcode command: %s", repr(ff.cmd))
         ff.run(verbose=False)
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
