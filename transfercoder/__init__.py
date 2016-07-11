@@ -51,19 +51,6 @@ def call_silent(cmd, *args, **kwargs):
     logger.debug("Calling command: %s", repr(cmd))
     return call(cmd, *args, stdin=nullsrc, stdout=nullsink, stderr=nullsink, **kwargs)
 
-def test_executable(exe, options=("--help",)):
-    """Test whether exe can be executed by doing `exe --help` or similar.
-
-    Returns True if the command succeeds, false otherwise. The exe's
-    stdin, stdout, and stderr are all redirected from/to the null
-    device."""
-    cmd = (exe, ) + options
-    try:
-        retval = call_silent(cmd)
-    except Exception:
-        return False
-    return retval == 0
-
 def del_hidden(paths):
     """Remove hidden paths from list of paths
 
