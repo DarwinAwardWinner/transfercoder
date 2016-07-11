@@ -12,7 +12,7 @@ import shutil
 import sys
 import tempfile
 
-from ffmpy import FF, FFRuntimeError
+from ffmpy import FFmpeg, FFRuntimeError
 from multiprocessing.pool import ThreadPool
 from mutagen import File as MusicFile
 from mutagen.aac import AACError
@@ -22,8 +22,10 @@ from six.moves import map
 from subprocess import call, check_call
 
 try:
+    # Python 3
     from collections import MutableMapping
 except ImportError:
+    # Python 2
     from UserDict import DictMixin as MutableMapping
 try:
     from tqdm import tqdm
@@ -317,7 +319,7 @@ class Transfercode(object):
         if self.eopts:
             encoder_opts = shlex.split(self.eopts)
 
-        ff = FF(
+        ff = FFmpeg(
             executable = ffmpeg,
             global_options = '-y',
             inputs = { self.src: None },
