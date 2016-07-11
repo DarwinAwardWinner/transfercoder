@@ -23,11 +23,6 @@ try:
 except ImportError:
     # Python 2
     from UserDict import DictMixin as MutableMapping
-try:
-    from tqdm import tqdm
-except ImportError:
-    def tqdm(iterable, *args, **kwargs):
-        return iterable
 
 # Set up logging
 logFormatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
