@@ -2,7 +2,8 @@
 
 This script is my answer to the common problem of wanting to put one's
 music library onto a device that doesn't support some of your music
-formats. All the solutions that I've seen to this problem have at least one of the following drawbacks:
+formats. All the solutions that I've seen to this problem have at
+least one of the following drawbacks:
 
 * Assume that I want to transcode *everything* into a single format,
   even though the device supports multiple formats.
