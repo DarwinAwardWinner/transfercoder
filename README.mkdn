@@ -7,8 +7,8 @@ least one of the following drawbacks:
 
 * Assume that I want to transcode *everything* into a single format,
   even though the device supports multiple formats.
-* Incorrect handling of tags (title, artist, etc.) during transcoding
-* Require a large media player
+* Handle tags incorrectly/not a all during transcoding
+* Require importing my music into a large, complicated media player
 
 So I wrote my own script to do it. You specify your music directory
 and the device's music directory, as well as the file extensions that
