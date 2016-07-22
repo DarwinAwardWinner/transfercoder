@@ -86,4 +86,4 @@ transfer.
   theory they should have identical volumes. Instead, just add
   replaygain tags to your transcoded library on your device after
   syncing. I have also written a tool for that called
-  [eganalysis](https://github.com/DarwinAwardWinner/rganalysis).
+  [rganalysis](https://github.com/DarwinAwardWinner/rganalysis).
