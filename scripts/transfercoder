@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
+from typing import Any, Iterable, Set
+
 import multiprocessing
 import plac
+import sys
+
 from multiprocessing.pool import ThreadPool
 
-def tqdm_fake(iterable, *args, **kwargs):
+def tqdm_fake(iterable: Iterable[Any], *args, **kwargs) -> Iterable[Any]:
     return iterable
 try:
     from tqdm import tqdm as tqdm_real
@@ -14,13 +18,13 @@ except ImportError:
 
 from transfercoder import *
 
-def default_job_count():
+def default_job_count() -> int:
     try:
         return multiprocessing.cpu_count()
     except Exception:
         return 1
 
-def create_dirs(dirs):
+def create_dirs(dirs: Iterable[str]) -> None:
     """Ensure that a list of directories all exist"""
     for d in dirs:
         if not os.path.isdir(d):
@@ -28,23 +32,21 @@ def create_dirs(dirs):
             os.makedirs(d)
 
 class ParallelException(Exception):
-    def __init__(self, message, exc, obj):
-
-        # Call the base class constructor with the parameters it needs
+    def __init__(self, message: str, exc: BaseException, obj: Any) -> None:
         super(ParallelException, self).__init__(message)
-
-        # Now for your custom code...
         self.exc = exc
         self.obj = obj
 
 class ParallelMethodCaller(object):
-    def __init__(self, methodname, *args, **kwargs):
-        self.methodname = methodname
+    def __init__(self, method_name: str, *args , **kwargs) -> None:
+        self.method_name = method_name
         self.args = args
         self.kwargs = kwargs
-    def __call__(self, obj):
+    def __call__(self, obj: Any) -> Any:
         try:
-            return getattr(obj, self.methodname)(*self.args, **self.kwargs)
+            return getattr(obj, self.method_name)(*self.args, **self.kwargs)
+        except KeyboardInterrupt:
+            sys.exit(1)
         except Exception as exc:
             return ParallelException(str(exc), exc, obj)
 
@@ -70,11 +72,11 @@ default_eopts = {
 }
 
 # Plac types
-def comma_delimited_set(x):
+def comma_delimited_set(x: str) -> Set[str]:
     # Handles stripping spaces and eliminating zero-length items
     return set(filter(len, list(x.strip() for x in x.split(","))))
 
-def directory(x):
+def directory(x: str) -> str:
     """Resolve symlinks, then return the result if it is a directory.
 
     Otherwise throw an error."""
@@ -88,20 +90,20 @@ def directory(x):
     else:
         return path
 
-def potential_directory(x):
+def potential_directory(x: str) -> str:
     if os.path.exists(x):
         return directory(x)
     else:
         return x
 
-def nonneg_int(x):
-    x = int(x)
-    if x < 0:
+def nonneg_int(x: str) -> int:
+    n = int(x)
+    if n < 0:
         raise ValueError("Not a nonnegative integer")
-    return x
+    return n
 
 # Entry point
-def plac_call_main():
+def plac_call_main() -> Any:
     return plac.call(main)
 
 @plac.annotations(
@@ -123,15 +125,16 @@ def plac_call_main():
     quiet=("Do not print informational messages.", "flag", "q"),
     verbose=("Print debug messages that are probably only useful if something is going wrong.", "flag", "v"),
 )
-def main(source_directory, destination_directory,
-         transcode_formats=set(("flac", "wv", "wav", "ape", "fla")),
-         target_format="ogg",
-         ffmpeg_path="ffmpeg", encoder_options=None,
+def main(source_directory: str, destination_directory: str,
+         transcode_formats: Set[str]=set(("flac", "wv", "wav", "ape", "fla")),
+         target_format: str="ogg",
+         ffmpeg_path: str="ffmpeg", encoder_options: str=None,
          rsync_path="rsync",
-         dry_run=False, include_hidden=False, delete=False, force=False,
-         no_checksum_tags=False,
-         quiet=False, verbose=False,
-         temp_dir=tempfile.gettempdir(), jobs=default_job_count()):
+         dry_run: bool=False, include_hidden: bool=False,
+         delete: bool=False, force: bool=False,
+         no_checksum_tags: bool=False,
+         quiet: bool=False, verbose: bool=False,
+         temp_dir: str=tempfile.gettempdir(), jobs: int=default_job_count()) -> None:
     """Mirror a directory with transcoding.
 
     Everything in the source directory is copied to the destination,
@@ -154,7 +157,8 @@ def main(source_directory, destination_directory,
         logger.setLevel(logging.INFO)
 
     if target_format in transcode_formats:
-        argument_error('The target format must not be one of the transcode formats')
+        logger.error('The target format must not be one of the transcode formats')
+        raise Exception('Aborting due to invalid command-line options.')
 
     if dry_run:
         logger.info("Running in --dry_run mode. Nothing actually happens.")
@@ -235,7 +239,7 @@ def main(source_directory, destination_directory,
             assert not dry_run, "Parallel dry run makes no sense"
             logger.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
             transcode_pool = None
-            last_file = None
+            last_file = None    # type: str
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
@@ -245,7 +249,7 @@ def main(source_directory, destination_directory,
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
-                    transcoded = transcode_pool.imap_unordered(tfunc, transfercodes)
+                    transcoded = transcode_pool.imap_unordered(tfunc, transfercodes) # type: ignore # https://github.com/python/typeshed/issues/683
                 else:
                     desc = "Copying"
                     logger.debug('Skipping the transcoding step because no files need to be transcoded')
@@ -255,8 +259,8 @@ def main(source_directory, destination_directory,
                     if isinstance(tfc, ParallelException):
                         par_exc = tfc
                         orig_exc = par_exc.exc
-                        tfc = par_exc.obj
-                        fname = tfc.src
+                        real_tfc = par_exc.obj
+                        fname = real_tfc.src
                         try:
                             raise orig_exc
                         except FFRuntimeError as exc:
@@ -268,7 +272,7 @@ def main(source_directory, destination_directory,
                             logger.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
                             continue
-                        last_file = tfc.dest
+                        last_file = real_tfc.dest
                     try:
                         tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                     except Exception as exc:

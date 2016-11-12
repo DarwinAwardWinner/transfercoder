@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+from typing import Any, Dict, Iterable, List, Pattern, Sequence, Tuple, Union
 
 import hashlib
 import logging
@@ -39,25 +39,30 @@ EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
 EasyMP4Tags.RegisterFreeformKey('transfercoder_src_checksum',
                                 'Transfercoder Source Checksum')
 
-def call_silent(cmd, *args, **kwargs):
+def call_silent(cmd: Union[str, Sequence[str]], *args, **kwargs) -> int:
     """Like subprocess.call, but redirects stdin/out/err to null device."""
     nullsrc = open(os.devnull, "r")
     nullsink = open(os.devnull, "w")
+    kwargs['stdin'] = nullsrc
+    kwargs['stdout'] = nullsink
+    kwargs['stderr'] = nullsink
     logger.debug("Calling command: %s", repr(cmd))
-    return call(cmd, *args, stdin=nullsrc, stdout=nullsink, stderr=nullsink, **kwargs)
+    return call(cmd, *args, **kwargs)
 
-def del_hidden(paths):
+def del_hidden(paths: List[str]) -> None:
     """Remove hidden paths from list of paths
 
-This modifies its argument *in place*, so it can be used with
-os.walk."""
+This modifies its argument *in place* rather than returning it, so it
+can be used with os.walk.
+
+    """
 
     hidden = (i for i in reversed(range(len(paths)))
               if paths[i][0] == ".")
     for i in hidden:
         del paths[i]
 
-def splitext_afterdot(path):
+def splitext_afterdot(path: str) -> Tuple[str, str]:
     """Same as os.path.splitext, but the dot goes to the base."""
     base, ext = os.path.splitext(path)
     if len(ext) > 0 and ext[0] == ".":
@@ -83,19 +88,20 @@ class AudioFile(MutableMapping):
     .data field and get your hands dirty.
 
     """
-    def __init__(self, filename, blacklist=[], easy=True):
+    def __init__(self, filename: str, blacklist: List[Pattern[str]]=[],
+                 easy: bool=True) -> None:
         self.filename = filename
         self.data = MusicFile(self.filename, easy=easy)
         if self.data is None:
             raise ValueError("Unable to identify %s as a music file" % (repr(filename)))
         # Also exclude mutagen's internal tags
         self.blacklist = [ re.compile("^~") ] + blacklist
-    def __getitem__(self, item):
+    def __getitem__(self, item: str) -> Any:
         if self.blacklisted(item):
             logger.debug("Attempted to get blacklisted key: %s." % repr(item))
         else:
             return self.data.__getitem__(item)
-    def __setitem__(self, item, value):
+    def __setitem__(self, item: str, value: Any) -> None:
         if self.blacklisted(item):
             logger.debug("Attempted to set blacklisted key: %s." % repr(item))
         else:
@@ -104,17 +110,17 @@ class AudioFile(MutableMapping):
             except KeyError:
                 logger.debug("Skipping unsupported tag %s for file type %s",
                              item, type(self.data))
-    def __delitem__(self, item):
+    def __delitem__(self, item: str):
         if self.blacklisted(item):
             logger.debug("Attempted to del blacklisted key: %s." % repr(item))
         else:
             return self.data.__delitem__(item)
-    def __len__(self):
-        return len(self.keys())
-    def __iter__(self):
+    def __len__(self) -> int:
+        return len(list(self.keys()))
+    def __iter__(self) -> Iterable[Any]:
         return iter(self.keys())
 
-    def blacklisted(self, item):
+    def blacklisted(self, item: str) -> bool:
         """Return True if tag is blacklisted.
 
         Blacklist automatically includes internal mutagen tags (those
@@ -124,9 +130,9 @@ class AudioFile(MutableMapping):
                 return True
         else:
             return False
-    def keys(self):
+    def keys(self) -> Iterable[str]:
         return [ key for key in self.data.keys() if not self.blacklisted(key) ]
-    def write(self):
+    def write(self) -> None:
         return self.data.save()
 
 # A list of regexps matching non-transferrable tags, like file format
@@ -137,7 +143,7 @@ blacklist_regexes = [ re.compile(s) for s in (
     'replaygain',
 ) ]
 
-def copy_tags (src, dest):
+def copy_tags (src: str, dest: str) -> None:
     """Replace tags of dest file with those of src.
 
 Excludes format-specific tags and replaygain info, which does not
@@ -155,7 +161,7 @@ carry across formats."""
     except AACError:
         logger.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
-def read_checksum_tag(fname):
+def read_checksum_tag(fname: str) -> str:
     try:
         afile = AudioFile(fname, easy=True)
         return afile['transfercoder_src_checksum'][0]
@@ -163,7 +169,7 @@ def read_checksum_tag(fname):
         logger.debug("Could not read checksum tag from %s", repr(fname))
         return None
 
-def write_checksum_tag(fname, cksum):
+def write_checksum_tag(fname: str, cksum: str) -> None:
     try:
         afile = AudioFile(fname, easy=True)
         afile['transfercoder_src_checksum'] = cksum
@@ -172,7 +178,7 @@ def write_checksum_tag(fname, cksum):
         logger.warn("Could not write checksum tag to %s", repr(fname))
 
 class Transfercode(object):
-    def __init__(self, src, dest, eopts=None, use_checksum=True):
+    def __init__(self, src: str, dest: str, eopts: str=None, use_checksum: bool=True) -> None:
         self.src = src
         self.dest = dest
         self.src_dir = os.path.split(self.src)[0]
@@ -181,19 +187,19 @@ class Transfercode(object):
         self.dest_ext = splitext_afterdot(self.dest)[1]
         self.eopts = eopts
         self.use_checksum = use_checksum
-        self._src_checksum = None
-        self._saved_checksum = None
+        self._src_checksum = None # type: str
+        self._saved_checksum = None # type: str
         self.needs_transcode = self.src_ext != self.dest_ext
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%s(src=%s, dest=%s, epots=%s, use_checksum=%s)" % \
             (type(self).__name__, repr(self.src), repr(self.dest),
              repr(self.eopts), repr(self.use_checksum))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self)
 
-    def source_checksum(self):
+    def source_checksum(self) -> str:
         if self._src_checksum is None:
             m = hashlib.sha256()
             m.update(open(self.src, 'rb').read())
@@ -203,7 +209,7 @@ class Transfercode(object):
             self._src_checksum = m.hexdigest()[:32]
         return self._src_checksum
 
-    def saved_checksum(self):
+    def saved_checksum(self) -> str:
         if self._saved_checksum is None:
             logger.debug("Reading checksum from %s", repr(self.dest))
             self._saved_checksum = read_checksum_tag(self.dest)
@@ -214,18 +220,18 @@ class Transfercode(object):
                 self._saved_checksum = ""
         return self._saved_checksum or None
 
-    def checksum_current(self):
+    def checksum_current(self) -> bool:
         """Returns True, False, or None for no checksum."""
-        return self.saved_checksum() and \
+        return self.saved_checksum() is not None and \
             self.saved_checksum() == self.source_checksum()
 
-    def save_checksum(self):
+    def save_checksum(self) -> None:
         # Clear the cached checksum from the dest file, if any
         self._saved_checksum = None
         logger.info("Saving checksum to destination file %s", repr(self.dest))
         write_checksum_tag(self.dest, self.source_checksum())
 
-    def needs_update(self, loglevel=logging.DEBUG):
+    def needs_update(self, loglevel: int=logging.DEBUG) -> bool:
         """Returns True if dest file needs update.
 
         For transcodable files, if self.use_checksum is True, the
@@ -277,7 +283,7 @@ class Transfercode(object):
                          verb, repr(self.src), repr(self.dest))
         return src_newer
 
-    def transcode(self, ffmpeg="ffmpeg", dry_run=False):
+    def transcode(self, ffmpeg: str="ffmpeg", dry_run: bool=False) -> None:
         logger.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
         logger.debug("Transcoding: %s", repr(self))
         if dry_run:
@@ -287,7 +293,7 @@ class Transfercode(object):
         # than only discovering the problem after transcoding.
         AudioFile(self.src)
 
-        encoder_opts = []
+        encoder_opts = []       # type: List[str]
         if self.eopts:
             encoder_opts = shlex.split(self.eopts)
 
@@ -311,7 +317,7 @@ class Transfercode(object):
             # It's ok if setting the mode fails
             pass
 
-    def copy(self, rsync=None, dry_run=False):
+    def copy(self, rsync: Union[str, bool]=None, dry_run: bool=False):
         """Copy src to dest.
 
         Optional arg rsync allows rsync to be used, which may be more
@@ -320,8 +326,11 @@ class Transfercode(object):
         if dry_run:
             return
         success = False
-        if rsync is True:
-            rsync = "rsync"
+        if isinstance(rsync, bool):
+            if rsync is True:
+                rsync = "rsync"
+            else:
+                rsync = None
         if rsync:
             try:
                 retval = call_silent([ rsync, "-q", "-p", self.src, self.dest ]) == 0
@@ -333,7 +342,7 @@ class Transfercode(object):
             shutil.copyfile(self.src, self.dest)
             shutil.copymode(self.src, self.dest)
 
-    def check(self):
+    def check(self) -> None:
         """Checks that source file and dest dir exist.
 
         Throws IOError if not. This is called just before initiating
@@ -343,7 +352,9 @@ class Transfercode(object):
         elif not os.path.isdir(self.dest_dir):
             raise IOError("Missing output directory: %s" % self.dest_dir)
 
-    def transfer(self, ffmpeg="ffmpeg", rsync=None, force=False, dry_run=False, transcode_tempdir=None):
+    def transfer(self, ffmpeg: str="ffmpeg", rsync: Union[str, bool]=None,
+                 force: bool=False, dry_run: bool=False,
+                 transcode_tempdir: str=None) -> None:
         """Copies or transcodes src to dest.
 
     Destination directory must already exist. Optional arg force
@@ -372,7 +383,9 @@ class Transfercode(object):
             logger.debug("Skipping: %s -> %s", self.src, self.dest)
 
     # TODO: implement encoder options
-    def transcode_to_tempdir(self, tempdir=None, force=False, dry_run=False, *args, **kwargs):
+    def transcode_to_tempdir(self, tempdir: str=None, force: bool=False,
+                             dry_run: bool=False, *args,
+                             **kwargs) -> Transfercode:
         """Transcode a file to a tempdir.
 
         Returns a Transfercode object for copying the transcoded temp file to
@@ -391,25 +404,25 @@ class Transfercode(object):
         tempname = os.path.split(self.dest)[1]
         temp_basename, temp_ext = os.path.splitext(tempname)
         temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
-        Transfercode(self.src, temp_filename, self.eopts, self.use_checksum).transfer(force=True, *args, **kwargs)
+        Transfercode(self.src, temp_filename, self.eopts, self.use_checksum).transfer(force=True, *args, **kwargs) # type: ignore
         return TransfercodeTemp(temp_filename, self.dest, None, False)
 
 class TransfercodeTemp(Transfercode):
     """Transfercode subclass where source is a temp file.
 
 The only addition is that the source file is deleted after transfer."""
-    def transfer(self, *args, **kwargs):
+    def transfer(self, *args, **kwargs) -> None:
         super(TransfercodeTemp, self).transfer(*args, **kwargs)
         os.remove(self.src)
 
-    def transcode_to_tempdir(self, *args, **kwargs):
+    def transcode_to_tempdir(self, *args, **kwargs) -> TransfercodeTemp:
         """This would be redundant."""
         return self
 
-    def needs_update(self, *args, **kwargs):
+    def needs_update(self, *args, **kwargs) -> bool:
         return True
 
-def is_subpath(path, parent):
+def is_subpath(path: str, parent: str) -> bool:
     """Returns true if path is a subpath of parent.
 
     For example, '/usr/bin/python' is a subpath of '/usr', while
@@ -420,7 +433,7 @@ def is_subpath(path, parent):
     # Any relative path that doesn't start with ".." is a subpath.
     return not os.path.relpath(path, parent)[0:2].startswith(os.path.pardir)
 
-def walk_files(dir, hidden=False):
+def walk_files(dir: str, hidden: bool=False) -> Iterable[str]:
     """Iterator over paths to non-directory files in dir.
 
     The returned paths will all start with dir. In particular, if dir
@@ -437,15 +450,16 @@ def walk_files(dir, hidden=False):
 
 class DestinationFinder(object):
     """A class for converting source paths to destination paths."""
-    def __init__(self, src_dir, dest_dir, src_exts, dest_ext, hidden=False):
+    def __init__(self, src_dir: str, dest_dir: str, src_exts: Iterable[str],
+                 dest_ext: str, hidden: bool=False) -> None:
         self.src_dir = os.path.realpath(src_dir)
         self.dest_dir = os.path.realpath(dest_dir)
         # These need leading dots
-        self.src_exts = src_exts
+        self.src_exts = list(src_exts)
         self.dest_ext = dest_ext
         self.include_hidden = hidden
 
-    def find_dest(self, src):
+    def find_dest(self, src: str) -> str:
         """Returns the absolute destination path for a source path.
 
         If the source path is absolute, it must lie inside src_dir, or
@@ -463,32 +477,32 @@ class DestinationFinder(object):
             dest_relpath = src
         return os.path.join(self.dest_dir, dest_relpath)
 
-    def walk_source_files(self):
+    def walk_source_files(self) -> Iterable[str]:
         """An iterator over all files in the source directory."""
         return walk_files(self.src_dir, hidden=self.include_hidden)
 
-    def walk_target_files(self):
+    def walk_target_files(self) -> Iterable[str]:
         """An iterator over all files that are to be created in the destination directory."""
         return map(self.find_dest, self.walk_source_files())
 
-    def walk_source_target_pairs(self):
+    def walk_source_target_pairs(self) -> Iterable[Tuple[str, str]]:
         """iter(zip(self.walk_source_files(), self.walk_target_files()))'.
 
         Only it's more efficient."""
         return ((src, self.find_dest(src)) for src in self.walk_source_files())
 
-    def walk_existing_dest_files(self):
+    def walk_existing_dest_files(self) -> Iterable[str]:
         """An iterator over all existing files in the destination directory."""
         return walk_files(self.dest_dir, hidden=self.include_hidden)
 
-    def walk_extra_dest_files(self):
+    def walk_extra_dest_files(self) -> Iterable[str]:
         """An iterator over all existing files in the destination directory that are not targets of source files.
 
         These are the files that transfercoder would delete if given the --delete option."""
         target_files = list(self.walk_target_files())
         return sorted(set(self.walk_existing_dest_files()).difference(self.walk_target_files()))
 
-    def transfercodes(self, eopts=None, use_checksum=True):
+    def transfercodes(self, eopts=None, use_checksum=True) -> Iterable[Transfercode]:
         """Generate Transfercode objects for all src files.
 
         Optional arg 'eopts' is passed to the Transfercode() constructor."""
