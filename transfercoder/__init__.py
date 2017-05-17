@@ -385,7 +385,7 @@ class Transfercode(object):
     # TODO: implement encoder options
     def transcode_to_tempdir(self, tempdir: str=None, force: bool=False,
                              dry_run: bool=False, *args,
-                             **kwargs) -> Transfercode:
+                             **kwargs) -> 'Transfercode':
         """Transcode a file to a tempdir.
 
         Returns a Transfercode object for copying the transcoded temp file to
@@ -415,7 +415,7 @@ The only addition is that the source file is deleted after transfer."""
         super(TransfercodeTemp, self).transfer(*args, **kwargs)
         os.remove(self.src)
 
-    def transcode_to_tempdir(self, *args, **kwargs) -> TransfercodeTemp:
+    def transcode_to_tempdir(self, *args, **kwargs) -> 'TransfercodeTemp':
         """This would be redundant."""
         return self
 
