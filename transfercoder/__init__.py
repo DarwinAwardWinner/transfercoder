@@ -304,7 +304,7 @@ class Transfercode(object):
             outputs = { self.dest: ['-vn'] + encoder_opts },
         )
         logger.debug("Transcode command: %s", repr(ff.cmd))
-        ff.run(verbose=False)
+        ff.run()
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
