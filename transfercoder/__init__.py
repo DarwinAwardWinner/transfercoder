@@ -283,7 +283,8 @@ class Transfercode(object):
                          verb, repr(self.src), repr(self.dest))
         return src_newer
 
-    def transcode(self, ffmpeg: str="ffmpeg", dry_run: bool=False) -> None:
+    def transcode(self, ffmpeg: str="ffmpeg", dry_run: bool=False,
+                  show_ffmpeg_output=False) -> None:
         logger.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
         logger.debug("Transcoding: %s", repr(self))
         if dry_run:
@@ -304,7 +305,11 @@ class Transfercode(object):
             outputs = { self.dest: ['-vn'] + encoder_opts },
         )
         logger.debug("Transcode command: %s", repr(ff.cmd))
-        ff.run()
+        if show_ffmpeg_output:
+            output_target = None
+        else:
+            output_target = open(os.devnull, "w")
+        ff.run(stdout=output_target, stderr=output_target)
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         copy_tags(self.src, self.dest)
@@ -354,7 +359,8 @@ class Transfercode(object):
 
     def transfer(self, ffmpeg: str="ffmpeg", rsync: Union[str, bool]=None,
                  force: bool=False, dry_run: bool=False,
-                 transcode_tempdir: str=None) -> None:
+                 transcode_tempdir: str=None,
+                 *args, **kwargs) -> None:
         """Copies or transcodes src to dest.
 
     Destination directory must already exist. Optional arg force
@@ -369,10 +375,10 @@ class Transfercode(object):
                 self.check()
             if self.needs_transcode:
                 if transcode_tempdir:
-                    temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run)
-                    temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None)
+                    temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run, *args, **kwargs)
+                    temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None, *args, **kwargs)
                 else:
-                    self.transcode(ffmpeg=ffmpeg, dry_run=dry_run)
+                    self.transcode(ffmpeg=ffmpeg, dry_run=dry_run, *args, **kwargs)
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
                 # If the destination is missing its checksum, we still need to

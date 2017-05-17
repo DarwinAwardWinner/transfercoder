@@ -123,7 +123,7 @@ def plac_call_main() -> Any:
     temp_dir=("Temporary directory to use for transcoded files.", "option", "t", directory),
     jobs=("Number of transcoding jobs to run in parallel. Transfers will always run sequentially. The default is the number of cores available on the system. A value of 1 will run transcoding in parallel with copying. Use -j0 to force full sequential operation.", "option", "j", nonneg_int),
     quiet=("Do not print informational messages.", "flag", "q"),
-    verbose=("Print debug messages that are probably only useful if something is going wrong.", "flag", "v"),
+    verbose=("Print debug messages that are probably only useful if something is going wrong. This also enables printing of the ffmpeg output.", "flag", "v"),
 )
 def main(source_directory: str, destination_directory: str,
          transcode_formats: Set[str]=set(("flac", "wv", "wav", "ape", "fla")),
@@ -220,7 +220,8 @@ def main(source_directory: str, destination_directory: str,
                         fname = tfc.src
                         try:
                             tfc = tfc.transcode_to_tempdir(tempdir=work_dir, ffmpeg=ffmpeg_path,
-                                                           rsync=rsync_path, force=force, dry_run=dry_run)
+                                                           rsync=rsync_path, force=force, dry_run=dry_run,
+                                                           show_ffmpeg_output=verbose)
                         except FFRuntimeError as exc:
                             logger.error("Error running ffmpeg on %s:\n%s",
                                          fname, exc.args[0].encode('utf-8').decode('unicode_escape'))
@@ -230,7 +231,8 @@ def main(source_directory: str, destination_directory: str,
                             logger.exception("Exception while transcoding %s: %s", fname, exc)
                             failed_files.append(fname)
                             continue
-                        tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
+                        tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run,
+                                     show_ffmpeg_output=verbose)
                 except Exception as exc:
                     logger.exception("Exception while transferring %s: %s", fname, exc)
                     failed_files.append(fname)
@@ -245,7 +247,7 @@ def main(source_directory: str, destination_directory: str,
                 if need_at_least_one_transcode:
                     desc = "Transcoding & copying"
                     logger.debug('Setting up transcoding ThreadPool')
-                    tfunc = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force)
+                    tfunc = ParallelMethodCaller("transcode_to_tempdir", tempdir=work_dir, ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, show_ffmpeg_output=verbose)
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
