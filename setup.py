@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name='transfercoder',
-    version='3.2',
+    version='3.3',
     description='A script to transfer and transcode your music library',
     url='https://github.com/DarwinAwardWinner/transfercoder',
     author='Ryan C. Thompson',
