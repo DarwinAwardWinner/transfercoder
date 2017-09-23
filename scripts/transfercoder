@@ -278,6 +278,7 @@ def main(source_directory: str, destination_directory: str,
                     try:
                         tfc.transfer(ffmpeg=ffmpeg_path, rsync=rsync_path, force=force, dry_run=dry_run)
                     except Exception as exc:
+                        fname = tfc.src
                         logger.exception("Exception while transferring %s: %s", fname, exc)
                         failed_files.append(fname)
                         continue
