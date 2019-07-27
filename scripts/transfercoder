@@ -51,24 +51,26 @@ class ParallelMethodCaller(object):
             return ParallelException(str(exc), exc, obj)
 
 # See:
+# https://ffmpeg.org/ffmpeg-codecs.html
 # https://trac.ffmpeg.org/wiki/Encode/HighQualityAudio
 # https://trac.ffmpeg.org/wiki/Encode/AAC
 # https://trac.ffmpeg.org/wiki/Encode/MP3
 # https://trac.ffmpeg.org/wiki/TheoraVorbisEncodingGuide
 # http://blog.codinghorror.com/concluding-the-great-mp3-bitrate-experiment/
 # http://wiki.hydrogenaud.io/index.php?title=Transparency
+# https://wiki.hydrogenaud.io/index.php?title=Opus
 # http://soundexpert.org/encoders-128-kbps
 default_eopts = {
-    # VBR ~192kbps
-    'mp3': '-codec:a libmp3lame -q:a 2',
-    # VBR ~160kbps
-    'ogg': '-codec:a libvorbis -q:a 5',
-    # VBR ~192kbps
-    'aac': '-codec:a libfdk_aac -vbr 5',
-    'm4a': '-codec:a libfdk_aac -vbr 5',
-    'mp4': '-codec:a libfdk_aac -vbr 5',
-    # VBR ~160kbps
-    'opus': '-codec:a libopus -b:a 160k',
+    # MP3: VBR ~160 kbps
+    'mp3': '-codec:a libmp3lame -q:a 4',
+    # OGG: VBR ~128 kbps
+    'ogg': '-codec:a libvorbis -q:a 4',
+    # AAC: VBR ~128 kbps (~64 per channel)
+    'aac': '-codec:a libfdk_aac -vbr 4',
+    'm4a': '-codec:a libfdk_aac -vbr 4',
+    'mp4': '-codec:a libfdk_aac -vbr 4',
+    # OPUS: VBR ~112 kbps
+    'opus': '-codec:a libopus -b:a 112k',
 }
 
 # Plac types
