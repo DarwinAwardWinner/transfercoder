@@ -24,7 +24,7 @@ setup(
         'ffmpy',
         'mutagen',
         'plac',
-        'six',
+        'rganalysis',
     ],
     extras_require = {
         'progress_bars':  ["tqdm"],

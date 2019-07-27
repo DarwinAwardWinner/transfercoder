@@ -34,9 +34,13 @@ transcoding a file any time the source file is newer.
 
 # Installation
 
-Transfercoder is now structured as a Python package, so you can
-install it using pip:
+Transfercoder is structured as a Python package, so you can install it
+using pip. You must first install another package of mine, rganalysis,
+since it isn't on PyPI.
 
+    # Need to install rganalysis first
+    pip install https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip
+    # Now install transfercoder
     pip install https://github.com/DarwinAwardWinner/transfercoder/archive/master.zip
 
 This should install Transfercoder and all the other Python packages
@@ -57,12 +61,13 @@ See the help (`transfercoder --help`) for more options.
 
 # Prerequisites
 
-* Python with the plac, mutagen, six, ffmpy, and tqdm modules
-  installed. (These packages should get installed automatically if you
-  use pip to install Transfercoder.) The script should work with both
-  Python 2 and 3, but as of version 3.2 it is primarily tested on
-  Python 3. (In recent versions, I've added type annotations, so it
-  probably won't work on Python 2 unless you remove them.)
+* Python 3 with the plac, mutagen, ffmpy, and tqdm modules installed.
+  (These packages should get installed automatically if you use pip to
+  install Transfercoder.) Python 2 is not supported.
+* My other package,
+  [rganalysis](https://github.com/DarwinAwardWinner/rganalysis), which
+  is used for manipulating ReplayGain tags. This is not on PyPI, so it
+  must be installed manually before installing transfercoder.
 * ffmpeg - For transcoding (Make sure ffmpeg is complied with support
   for encoding and/or decoding the formats you require)
 * Rsync (optional) - For faster copying of small changes
@@ -77,8 +82,11 @@ transfer.
 * You can only choose one target transcoding target format. I can't
   see a reason you would want more than one. You wouldn't want to
   transcode flac to ogg and then transcode wavpack to mp3.
-* No playlist support. Playlists can get complicated. They may have
-  relative or absolute paths, and the device may expect them in odd
+* No playlist support. Obviously, if your playlist has "music.flac" in
+  it and you're transcoding flac to ogg, then your playlist now refers
+  to a nonexistent file in the destination, unless you adjust to the
+  new file name "music.ogg". Playlists are complicated. They may have
+  relative or absolute paths, and devices may expect them in odd
   formats. You'll need to come up with your own solution here, or just
   use a media player that handles them.
 * Transfercoder intentionally avoids copying replaygain tags when

@@ -14,8 +14,8 @@ from mutagen import File as MusicFile
 from mutagen.aac import AACError
 from mutagen.easyid3 import EasyID3
 from mutagen.easymp4 import EasyMP4Tags
-from six.moves import map
 from subprocess import call, check_call
+from rganalysis import RGTrack
 
 try:
     # Python 3
@@ -177,6 +177,10 @@ def write_checksum_tag(fname: str, cksum: str) -> None:
     except Exception:
         logger.warn("Could not write checksum tag to %s", repr(fname))
 
+def delete_replaygain_tags(fname: str) -> None:
+    '''Delete all ReplayGain tags from a music file.'''
+    RGTrack(fname).cleanup_tags()
+
 class Transfercode(object):
     def __init__(self, src: str, dest: str, eopts: str=None, use_checksum: bool=True) -> None:
         self.src = src
@@ -312,6 +316,9 @@ class Transfercode(object):
         ff.run(stdout=output_target, stderr=output_target)
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
+        logger.debug("Deleting any ReplayGain tags on destination file %s", repr(self.dest))
+        delete_replaygain_tags(self.dest)
+        logger.debug("Copying tags from %s to %s", repr(self.src), repr(self.dest))
         copy_tags(self.src, self.dest)
         if self.use_checksum:
             logger.debug("Saving checksum to dest file %s: %s", repr(self.dest), self.source_checksum())
