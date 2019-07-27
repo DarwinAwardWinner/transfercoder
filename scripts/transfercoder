@@ -70,7 +70,7 @@ default_eopts = {
     'm4a': '-codec:a libfdk_aac -vbr 4',
     'mp4': '-codec:a libfdk_aac -vbr 4',
     # OPUS: VBR ~112 kbps
-    'opus': '-codec:a libopus -b:a 112k',
+    'opus': '-codec:a libopus -b:a 96k',
 }
 
 # Plac types
