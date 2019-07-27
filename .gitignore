@@ -1,3 +1,4 @@
 # Some testing files
 testin/*
 testout/*
+/.mypy_cache
