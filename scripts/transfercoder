@@ -8,7 +8,7 @@ import sys
 
 from multiprocessing.pool import ThreadPool
 
-def tqdm_fake(iterable: Iterable[Any], *args, **kwargs) -> Iterable[Any]:
+def tqdm_fake(iterable: Iterable[Any], *args: Any, **kwargs: Any) -> Iterable[Any]:
     return iterable
 try:
     from tqdm import tqdm as tqdm_real
@@ -38,7 +38,7 @@ class ParallelException(Exception):
         self.obj = obj
 
 class ParallelMethodCaller(object):
-    def __init__(self, method_name: str, *args , **kwargs) -> None:
+    def __init__(self, method_name: str, *args: Any, **kwargs: Any) -> None:
         self.method_name = method_name
         self.args = args
         self.kwargs = kwargs
@@ -131,7 +131,7 @@ def main(source_directory: str, destination_directory: str,
          transcode_formats: Set[str]=set(("flac", "wv", "wav", "ape", "fla")),
          target_format: str="ogg",
          ffmpeg_path: str="ffmpeg", encoder_options: str=None,
-         rsync_path="rsync",
+         rsync_path: str="rsync",
          dry_run: bool=False, include_hidden: bool=False,
          delete: bool=False, force: bool=False,
          no_checksum_tags: bool=False,
@@ -248,7 +248,7 @@ def main(source_directory: str, destination_directory: str,
             assert not dry_run, "Parallel dry run makes no sense"
             logger.debug("Running %s transcoding %s and 1 transfer job in parallel.", jobs, ("jobs" if jobs > 1 else "job"))
             transcode_pool = None
-            last_file = None    # type: str
+            last_file = None    # type: Optional[str]
             try:
                 # Transcoding step (parallel)
                 if need_at_least_one_transcode:
@@ -258,12 +258,12 @@ def main(source_directory: str, destination_directory: str,
                     transcode_pool = ThreadPool(jobs)
                     # Sort jobs that don't need transcoding first
                     transfercodes = sorted(transfercodes, key = lambda x: x.needs_transcode)
-                    transcoded = transcode_pool.imap_unordered(tfunc, transfercodes) # type: ignore # https://github.com/python/typeshed/issues/683
+                    transcoded = transcode_pool.imap_unordered(tfunc, transfercodes) # type: Iterable[Transfercode]
                 else:
                     desc = "Copying"
                     logger.debug('Skipping the transcoding step because no files need to be transcoded')
                     transcoded = transfercodes
-                    # Transfer step (not parallel, since it is disk-bound)
+                # Transfer step (not parallel, since it is assumed to be disk-bound)
                 for tfc in tqdm(transcoded, desc=desc, total=len(transfercodes)):
                     if isinstance(tfc, ParallelException):
                         par_exc = tfc

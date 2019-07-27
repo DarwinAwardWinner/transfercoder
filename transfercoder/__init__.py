@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, List, Pattern, Sequence, Tuple, Union
+from typing import Any, Dict, AbstractSet, Iterable, Iterator, List, Pattern, Sequence, Tuple, Union, Optional
 
 import hashlib
 import logging
@@ -17,12 +17,7 @@ from mutagen.easymp4 import EasyMP4Tags
 from subprocess import call, check_call
 from rganalysis import RGTrack
 
-try:
-    # Python 3
-    from collections.abc import MutableMapping
-except ImportError:
-    # Python 2
-    from UserDict import DictMixin as MutableMapping
+from collections.abc import MutableMapping
 
 # Set up logging
 logFormatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
@@ -39,7 +34,7 @@ EasyID3.RegisterTXXXKey('transfercoder_src_checksum',
 EasyMP4Tags.RegisterFreeformKey('transfercoder_src_checksum',
                                 'Transfercoder Source Checksum')
 
-def call_silent(cmd: Union[str, Sequence[str]], *args, **kwargs) -> int:
+def call_silent(cmd: Union[str, Sequence[str]], *args: Any, **kwargs: Any) -> int:
     """Like subprocess.call, but redirects stdin/out/err to null device."""
     nullsrc = open(os.devnull, "r")
     nullsink = open(os.devnull, "w")
@@ -110,14 +105,14 @@ class AudioFile(MutableMapping):
             except KeyError:
                 logger.debug("Skipping unsupported tag %s for file type %s",
                              item, type(self.data))
-    def __delitem__(self, item: str):
+    def __delitem__(self, item: str) -> None:
         if self.blacklisted(item):
             logger.debug("Attempted to del blacklisted key: %s." % repr(item))
         else:
             return self.data.__delitem__(item)
     def __len__(self) -> int:
         return len(list(self.keys()))
-    def __iter__(self) -> Iterable[Any]:
+    def __iter__(self) -> Iterator[Any]:
         return iter(self.keys())
 
     def blacklisted(self, item: str) -> bool:
@@ -130,8 +125,8 @@ class AudioFile(MutableMapping):
                 return True
         else:
             return False
-    def keys(self) -> Iterable[str]:
-        return [ key for key in self.data.keys() if not self.blacklisted(key) ]
+    def keys(self) -> AbstractSet[str]:
+        return { key for key in self.data.keys() if not self.blacklisted(key) }
     def write(self) -> None:
         return self.data.save()
 
@@ -161,7 +156,7 @@ carry across formats."""
     except AACError:
         logger.warn("No tags copied because output format does not support tags: %s", repr(type(m_dest.data)))
 
-def read_checksum_tag(fname: str) -> str:
+def read_checksum_tag(fname: str) -> Optional[str]:
     try:
         afile = AudioFile(fname, easy=True)
         return afile['transfercoder_src_checksum'][0]
@@ -182,7 +177,7 @@ def delete_replaygain_tags(fname: str) -> None:
     RGTrack(fname).cleanup_tags()
 
 class Transfercode(object):
-    def __init__(self, src: str, dest: str, eopts: str=None, use_checksum: bool=True) -> None:
+    def __init__(self, src: str, dest: str, eopts: Optional[str]=None, use_checksum: bool=True) -> None:
         self.src = src
         self.dest = dest
         self.src_dir = os.path.split(self.src)[0]
@@ -191,8 +186,8 @@ class Transfercode(object):
         self.dest_ext = splitext_afterdot(self.dest)[1]
         self.eopts = eopts
         self.use_checksum = use_checksum
-        self._src_checksum = None # type: str
-        self._saved_checksum = None # type: str
+        self._src_checksum = None # type: Optional[str]
+        self._saved_checksum = None # type: Optional[str]
         self.needs_transcode = self.src_ext != self.dest_ext
 
     def __repr__(self) -> str:
@@ -213,7 +208,7 @@ class Transfercode(object):
             self._src_checksum = m.hexdigest()[:32]
         return self._src_checksum
 
-    def saved_checksum(self) -> str:
+    def saved_checksum(self) -> Optional[str]:
         if self._saved_checksum is None:
             logger.debug("Reading checksum from %s", repr(self.dest))
             self._saved_checksum = read_checksum_tag(self.dest)
@@ -287,8 +282,8 @@ class Transfercode(object):
                          verb, repr(self.src), repr(self.dest))
         return src_newer
 
-    def transcode(self, ffmpeg: str="ffmpeg", dry_run: bool=False,
-                  show_ffmpeg_output=False) -> None:
+    def transcode(self, ffmpeg: str = "ffmpeg", dry_run: bool = False,
+                  show_ffmpeg_output: bool = False) -> None:
         logger.info("Transcoding: %s -> %s", repr(self.src), repr(self.dest))
         logger.debug("Transcoding: %s", repr(self))
         if dry_run:
@@ -329,7 +324,7 @@ class Transfercode(object):
             # It's ok if setting the mode fails
             pass
 
-    def copy(self, rsync: Union[str, bool]=None, dry_run: bool=False):
+    def copy(self, rsync: Union[str, bool]=None, dry_run: bool=False) -> None:
         """Copy src to dest.
 
         Optional arg rsync allows rsync to be used, which may be more
@@ -367,7 +362,7 @@ class Transfercode(object):
     def transfer(self, ffmpeg: str="ffmpeg", rsync: Union[str, bool]=None,
                  force: bool=False, dry_run: bool=False,
                  transcode_tempdir: str=None,
-                 *args, **kwargs) -> None:
+                 *args: Any, **kwargs: Any) -> None:
         """Copies or transcodes src to dest.
 
     Destination directory must already exist. Optional arg force
@@ -382,10 +377,10 @@ class Transfercode(object):
                 self.check()
             if self.needs_transcode:
                 if transcode_tempdir:
-                    temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run, *args, **kwargs)
-                    temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None, *args, **kwargs)
+                    temp = self.transcode_to_tempdir(ffmpeg=ffmpeg, rsync=rsync, tempdir=transcode_tempdir, force=True, dry_run=dry_run, *args, **kwargs) # type: ignore
+                    temp.transfer(ffmpeg=ffmpeg, rsync=rsync, force=force, dry_run=dry_run, transcode_tempdir=None, *args, **kwargs) # type: ignore
                 else:
-                    self.transcode(ffmpeg=ffmpeg, dry_run=dry_run, *args, **kwargs)
+                    self.transcode(ffmpeg=ffmpeg, dry_run=dry_run, *args, **kwargs) # type: ignore
             else:
                 self.copy(rsync=rsync, dry_run=dry_run)
                 # If the destination is missing its checksum, we still need to
@@ -397,8 +392,8 @@ class Transfercode(object):
 
     # TODO: implement encoder options
     def transcode_to_tempdir(self, tempdir: str=None, force: bool=False,
-                             dry_run: bool=False, *args,
-                             **kwargs) -> 'Transfercode':
+                             dry_run: bool=False, *args: Any,
+                             **kwargs: Any) -> 'Transfercode':
         """Transcode a file to a tempdir.
 
         Returns a Transfercode object for copying the transcoded temp file to
@@ -424,15 +419,15 @@ class TransfercodeTemp(Transfercode):
     """Transfercode subclass where source is a temp file.
 
 The only addition is that the source file is deleted after transfer."""
-    def transfer(self, *args, **kwargs) -> None:
+    def transfer(self, *args: Any, **kwargs: Any) -> None:
         super(TransfercodeTemp, self).transfer(*args, **kwargs)
         os.remove(self.src)
 
-    def transcode_to_tempdir(self, *args, **kwargs) -> 'TransfercodeTemp':
+    def transcode_to_tempdir(self, *args: Any, **kwargs: Any) -> 'TransfercodeTemp':
         """This would be redundant."""
         return self
 
-    def needs_update(self, *args, **kwargs) -> bool:
+    def needs_update(self, *args: Any, **kwargs: Any) -> bool:
         return True
 
 def is_subpath(path: str, parent: str) -> bool:
@@ -515,7 +510,7 @@ class DestinationFinder(object):
         target_files = list(self.walk_target_files())
         return sorted(set(self.walk_existing_dest_files()).difference(self.walk_target_files()))
 
-    def transfercodes(self, eopts=None, use_checksum=True) -> Iterable[Transfercode]:
+    def transfercodes(self, eopts: Optional[str]=None, use_checksum: bool=True) -> Iterable[Transfercode]:
         """Generate Transfercode objects for all src files.
 
         Optional arg 'eopts' is passed to the Transfercode() constructor."""
