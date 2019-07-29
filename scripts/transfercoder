@@ -212,6 +212,11 @@ def main(source_directory: str=None, destination_directory: str=None,
         except KeyError:
             pass
 
+    if encoder_options:
+        logger.debug("Transcoding to %s with encoder options: %s", target_format, repr(default_eopts[target_format]))
+    else:
+        logger.debug("Transcoding to %s with no extra encoder options")
+
     source_directory = os.path.realpath(source_directory)
     destination_directory = os.path.realpath(destination_directory)
     df = DestinationFinder(source_directory, destination_directory,
