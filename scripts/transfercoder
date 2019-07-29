@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from typing import Any, Iterable, Set
+from typing import Any, Iterable, Set, Callable, cast
+from pprint import pformat
 
 import multiprocessing
 import plac
@@ -108,14 +109,26 @@ def nonneg_int(x: str) -> int:
 def plac_call_main() -> Any:
     return plac.call(main)
 
+def plac_get_parser(func: Optional[Callable]=None) -> plac.ArgumentParser:
+    '''Return the plac parser for a function (default main)'''
+    return plac.parser_from(func or main)
+
+# Some arguments need to have their defaults unset in the signature to
+# main() so that we can detect whether the argument was provided or
+# not. For those arguments, the *real* defaults are here.
+default_arg_values = {
+    'target_format': 'ogg',
+}
+
 @plac.annotations(
     # arg=(helptext, kind, abbrev, type, choices, metavar)
     source_directory=("The directory with all your music in it.", "positional", None, directory),
     destination_directory=("The directory where output files will go. The directory hierarchy of the source directory will be replicated here.", "positional", None, potential_directory),
     transcode_formats=("A comma-separated list of input file extensions that must be transcoded. ffmpeg must be compiled with support for decoding these formats.", "option", "i", comma_delimited_set, None, 'flac,wv,wav,ape,fla'),
-    target_format=("All input transcode formats will be transcoded to this output format. ffmpeg must be compiled with support for encoding this format.", "option", "o", str),
+    target_format=("All input transcode formats will be transcoded to this output format. ffmpeg must be compiled with support for encoding this format.", "option", "o", str, None, default_arg_values['target_format']),
     ffmpeg_path=("The path to ffmpeg. Only required if ffmpeg is not already in your $PATH or is installed with a non-standard name.", "option", "p", str),
     encoder_options=("Extra encoder options to pass to ffmpeg. Passing this will override the defaults, and no sanity checking is performed.", "option", "E", str, None, "'OPTIONS'"),
+    show_default_encoder_options=("Instead of doing anything, just show the default encoder options and exit. If --target-format is specified, it will show the encoder options for that format. Otherwise it will show the full set of defaults.", "flag", "S"),
     rsync_path=("The path to the rsync binary. Rsync will be used if available, but it is not required.", "option", "r", str),
     dry_run=("Don't actually modify anything.", "flag", "n"),
     include_hidden=("Don't skip directories and files starting with a dot.", "flag", "z"),
@@ -127,10 +140,12 @@ def plac_call_main() -> Any:
     quiet=("Do not print informational messages.", "flag", "q"),
     verbose=("Print debug messages that are probably only useful if something is going wrong. This also enables printing of the ffmpeg output.", "flag", "v"),
 )
-def main(source_directory: str, destination_directory: str,
+def main(source_directory: str=None, destination_directory: str=None,
          transcode_formats: Set[str]=set(("flac", "wv", "wav", "ape", "fla")),
-         target_format: str="ogg",
-         ffmpeg_path: str="ffmpeg", encoder_options: str=None,
+         target_format: Optional[str]=None,
+         ffmpeg_path: str="ffmpeg",
+         encoder_options: Optional[str]=None,
+         show_default_encoder_options: bool=False,
          rsync_path: str="rsync",
          dry_run: bool=False, include_hidden: bool=False,
          delete: bool=False, force: bool=False,
@@ -149,6 +164,23 @@ def main(source_directory: str, destination_directory: str,
     copied over unmodified.
 
     """
+    if show_default_encoder_options:
+        if target_format is None:
+            logger.info("Default encoder options:\n%s", pformat(default_eopts))
+        else:
+            try:
+                logger.info("Default encoder options for %s: %s", target_format, repr(default_eopts[target_format]))
+            except KeyError:
+                logger.info("No default encoder options are defined for %s", target_format)
+        return
+
+    # These arguments are required, but we don't let plac handle that
+    # normally because then we couldn't run the above code to show
+    # default encoder options.
+    if source_directory is None or destination_directory is None:
+        plac_get_parser().error("The following arguments are required: source_directory, destination_directory")
+        return
+
     tqdm = tqdm_real
     if quiet:
         logger.setLevel(logging.WARN)
@@ -158,9 +190,11 @@ def main(source_directory: str, destination_directory: str,
     else:
         logger.setLevel(logging.INFO)
 
+    if not target_format:
+        target_format = default_arg_values['target_format']
+
     if target_format in transcode_formats:
-        logger.error('The target format must not be one of the transcode formats')
-        raise Exception('Aborting due to invalid command-line options.')
+        plac_get_parser().error('The target format must not be one of the transcode formats')
 
     if dry_run:
         logger.info("Running in --dry_run mode. Nothing actually happens.")
