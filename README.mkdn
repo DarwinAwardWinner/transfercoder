@@ -35,13 +35,14 @@ transcoding a file any time the source file is newer.
 # Installation
 
 Transfercoder is structured as a Python package, so you can install it
-using pip. You must first install another package of mine, rganalysis,
-since it isn't on PyPI.
+using pip. You must also install another package of mine, rganalysis,
+since it isn't on PyPI. Make sure you are installing using a `pip`
+command associated with Python 3, not Python 2. This command may be
+named `pip3` instead of `pip`.
 
-    # Need to install rganalysis first
-    pip install https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip
-    # Now install transfercoder
-    pip install https://github.com/DarwinAwardWinner/transfercoder/archive/master.zip
+    pip install \
+        https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip \
+        https://github.com/DarwinAwardWinner/transfercoder/archive/master.zip
 
 This should install Transfercoder and all the other Python packages
 that it depends on. After this, you should now have a command called
