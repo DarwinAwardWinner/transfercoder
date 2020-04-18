@@ -36,13 +36,13 @@ EasyMP4Tags.RegisterFreeformKey('transfercoder_src_checksum',
 
 def call_silent(cmd: Union[str, Sequence[str]], *args: Any, **kwargs: Any) -> int:
     """Like subprocess.call, but redirects stdin/out/err to null device."""
-    nullsrc = open(os.devnull, "r")
-    nullsink = open(os.devnull, "w")
-    kwargs['stdin'] = nullsrc
-    kwargs['stdout'] = nullsink
-    kwargs['stderr'] = nullsink
-    logger.debug("Calling command: %s", repr(cmd))
-    return call(cmd, *args, **kwargs)
+    with open(os.devnull, "r") as nullsrc, \
+         open(os.devnull, "w") as nullsink:
+        kwargs['stdin'] = nullsrc
+        kwargs['stdout'] = nullsink
+        kwargs['stderr'] = nullsink
+        logger.debug("Calling command: %s", repr(cmd))
+        return call(cmd, *args, **kwargs)
 
 def del_hidden(paths: List[str]) -> None:
     """Remove hidden paths from list of paths
@@ -201,7 +201,8 @@ class Transfercode(object):
     def source_checksum(self) -> str:
         if self._src_checksum is None:
             m = hashlib.sha256()
-            m.update(open(self.src, 'rb').read())
+            with open(self.src, 'rb') as f:
+                m.update(f.read())
             # We also hash the encoder options, since if those change,
             # we need to re-transcode.
             m.update((self.eopts or "").encode('utf-8'))
@@ -304,11 +305,15 @@ class Transfercode(object):
             outputs = { self.dest: ['-vn'] + encoder_opts },
         )
         logger.debug("Transcode command: %s", repr(ff.cmd))
-        if show_ffmpeg_output:
-            output_target = None
-        else:
-            output_target = open(os.devnull, "w")
-        ff.run(stdout=output_target, stderr=output_target)
+        try:
+            if show_ffmpeg_output:
+                output_target = None
+            else:
+                output_target = open(os.devnull, "w")
+            ff.run(stdout=output_target, stderr=output_target)
+        finally:
+            if output_target:
+                output_target.close()
         if not os.path.isfile(self.dest):
             raise Exception("ffmpeg did not produce an output file")
         logger.debug("Deleting any ReplayGain tags on destination file %s", repr(self.dest))
