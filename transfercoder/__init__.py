@@ -9,7 +9,7 @@ import shlex
 import shutil
 import tempfile
 
-from ffmpy import FFmpeg, FFRuntimeError
+from ffmpy import FFmpeg, FFRuntimeError, FFprobe
 from mutagen import File as MusicFile
 from mutagen.aac import AACError
 from mutagen.easyid3 import EasyID3
@@ -64,6 +64,21 @@ def splitext_afterdot(path: str) -> Tuple[str, str]:
         base += "."
         ext = ext[1:]
     return (base, ext)
+
+def is_music_file(path: str, ffprobe: str = "ffprobe") -> bool:
+    """Returns True if path is identifiable as a music file."""
+    if not os.path.exists(path):
+        raise ValueError("No such file or directory: %s" % (repr(path),))
+    with open(os.devnull, "w") as nullsink:
+        ff = FFprobe(
+            executable = ffprobe,
+            inputs = { path: None },
+        )
+        try:
+            ff.run(stdout = nullsink, stderr = nullsink)
+            return True
+        except FFRuntimeError:
+            return False
 
 class AudioFile(MutableMapping):
     """A simple class just for tag editing.
@@ -145,9 +160,17 @@ Excludes format-specific tags and replaygain info, which does not
 carry across formats."""
     try:
         m_src = AudioFile(src, blacklist = blacklist_regexes, easy=True)
+    except ValueError:
+        logger.warn("No tags copied because input format does not support tags: %s" % (repr(src),))
+        return
+    try:
         m_dest = AudioFile(dest, blacklist = m_src.blacklist, easy=True)
+    except ValueError:
+        logger.warn("No tags copied because output format does not support tags: %s" % (repr(dest),))
+        return
+    try:
         m_dest.clear()
-        logging.debug("Adding tags from source file:\n%s",
+        logger.debug("Adding tags from source file:\n%s",
                       "\n".join("%s: %s" % (k, repr(m_src[k])) for k in sorted(m_src.keys())))
         m_dest.update(m_src)
         logger.debug("Added tags to dest file:\n%s",
@@ -289,10 +312,6 @@ class Transfercode(object):
         logger.debug("Transcoding: %s", repr(self))
         if dry_run:
             return
-        # This has no effect if successful, but will throw an error
-        # early if we can't read tags from the source file, rather
-        # than only discovering the problem after transcoding.
-        AudioFile(self.src)
 
         encoder_opts = []       # type: List[str]
         if self.eopts:
