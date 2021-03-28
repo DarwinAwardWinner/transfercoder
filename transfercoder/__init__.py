@@ -435,7 +435,8 @@ class Transfercode(object):
             return self
         tempname = os.path.split(self.dest)[1]
         temp_basename, temp_ext = os.path.splitext(tempname)
-        temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)[1]
+        temp_fd, temp_filename = tempfile.mkstemp(prefix=temp_basename + "_", suffix=temp_ext, dir=tempdir)
+        os.close(temp_fd)
         Transfercode(self.src, temp_filename, self.eopts, self.use_checksum).transfer(force=True, *args, **kwargs) # type: ignore
         return TransfercodeTemp(temp_filename, self.dest, None, False)
 
